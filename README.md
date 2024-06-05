@@ -1,5 +1,6 @@
 # SapFlower
-![SapFlower_white_bg](https://github.com/JiaxinWang123/SapFlower/assets/98176596/1d65c4b5-5b7a-4af0-91dc-d6fc7254d719)
+
+![SapFlower](https://github.com/JiaxinWang123/SapFlower/assets/98176596/15ed876f-8e04-4599-a930-81e870693b1e)
 
 
 
