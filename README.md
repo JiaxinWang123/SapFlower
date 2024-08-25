@@ -4,7 +4,11 @@ The GUI App will be written in Matlab, and it is still under construction.
 
 ![SapFlower](https://github.com/JiaxinWang123/SapFlower/assets/98176596/15ed876f-8e04-4599-a930-81e870693b1e)
 
-![SapFlower2](https://github.com/JiaxinWang123/SapFlower/assets/98176596/67bb676c-7e8e-4b68-8c7d-b2a6f89e507b)
+![Screenshot 2024-08-21 190307](https://github.com/user-attachments/assets/880f5292-fd88-4de6-a53f-dbc0fd14d1ba)
+
+![Screenshot 2024-08-25 140411](https://github.com/user-attachments/assets/22cb02f6-0e86-4300-b3f8-7f5b8c3a0634)
+
+
 
 
 
