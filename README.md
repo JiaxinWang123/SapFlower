@@ -1,6 +1,6 @@
 # SapFlower
 
-The GUI App will be written in Matlab, and it is still under construction.
+The GUI App will be written in Matlab, and it is under construction.
 
 ![SapFlower](https://github.com/JiaxinWang123/SapFlower/assets/98176596/15ed876f-8e04-4599-a930-81e870693b1e)
 
