@@ -226,7 +226,6 @@ classdef SapFlower < matlab.apps.AppBase
         ShowLegendMenu                  matlab.ui.container.Menu
     end
 
-    
     properties (Access = public)
         OriginalXData        double
         OriginalYData        double
