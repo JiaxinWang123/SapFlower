@@ -26,25 +26,10 @@ classdef SapFlower < matlab.apps.AppBase
         QuantileRegressionMenu_2        matlab.ui.container.Menu
         BayesianFilteringMenu_2         matlab.ui.container.Menu
         GapFillMenu                     matlab.ui.container.Menu
-        LinearmodelsMenu                matlab.ui.container.Menu
-        SimplelinearmodelMenu           matlab.ui.container.Menu
-        MultivariatelinearmodelMenu     matlab.ui.container.Menu
-        WeightedmultivariatelinearmodelMenu  matlab.ui.container.Menu
-        NonlinearmodelsMenu             matlab.ui.container.Menu
-        LSTMMenu                        matlab.ui.container.Menu
-        BiLSTMMenu                      matlab.ui.container.Menu
-        GaussianProcessesMenu           matlab.ui.container.Menu
-        KernelRegressionMenu            matlab.ui.container.Menu
-        NonlinearAutoRegressiveModelwitheXogenousInputsNARXMenu  matlab.ui.container.Menu
-        SplineInterpolationMenu         matlab.ui.container.Menu
-        LOESSLocallyWeightedScatterplotSmoothingMenu  matlab.ui.container.Menu
-        ReverseDataMenu                 matlab.ui.container.Menu
-        ReverseMenu                     matlab.ui.container.Menu
-        UndoreverseMenu                 matlab.ui.container.Menu
-        PlotMenu                        matlab.ui.container.Menu
-        ExportMenu                      matlab.ui.container.Menu
-        SaveasMenu                      matlab.ui.container.Menu
-        FullScreenMenu                  matlab.ui.container.Menu
+        DeleteSelectedDataMenu          matlab.ui.container.Menu
+        ReverseSelectedDataMenu         matlab.ui.container.Menu
+        UndoMenu                        matlab.ui.container.Menu
+        UndoAllMenu                     matlab.ui.container.Menu
         HelpMenu                        matlab.ui.container.Menu
         AboutMenu                       matlab.ui.container.Menu
         ManualMenu                      matlab.ui.container.Menu
@@ -97,8 +82,8 @@ classdef SapFlower < matlab.apps.AppBase
         XDropDown                       matlab.ui.control.DropDown
         XDropDownLabel                  matlab.ui.control.Label
         SaveDataButton                  matlab.ui.control.Button
-        UndoReverButton                 matlab.ui.control.Button
-        ReverdataButton                 matlab.ui.control.Button
+        UndoReverseButton               matlab.ui.control.Button
+        ReverseDataButton               matlab.ui.control.Button
         PlotDataButton                  matlab.ui.control.Button
         TextArea2                       matlab.ui.control.TextArea
         NextSensorButton                matlab.ui.control.Button
@@ -106,9 +91,9 @@ classdef SapFlower < matlab.apps.AppBase
         FinishEditingButton             matlab.ui.control.Button
         UndoDeletionButton              matlab.ui.control.Button
         DeletedTdataButton              matlab.ui.control.Button
-        UIAxes5                         matlab.ui.control.UIAxes
-        UIAxes4                         matlab.ui.control.UIAxes
         UIAxes3                         matlab.ui.control.UIAxes
+        UIAxes4                         matlab.ui.control.UIAxes
+        UIAxes5                         matlab.ui.control.UIAxes
         ModelTrainingTab                matlab.ui.container.Tab
         GridLayout14                    matlab.ui.container.GridLayout
         SplitForValidationEditField     matlab.ui.control.NumericEditField
@@ -170,11 +155,13 @@ classdef SapFlower < matlab.apps.AppBase
         GRUNode                         matlab.ui.container.TreeNode
         LSTMNode                        matlab.ui.container.TreeNode
         BiLSTMNode                      matlab.ui.container.TreeNode
+        RandomForestNode                matlab.ui.container.TreeNode
         StartTrainingButton             matlab.ui.control.Button
         OutputPathButton                matlab.ui.control.Button
         Output                          matlab.ui.control.EditField
         GapFillingTab                   matlab.ui.container.Tab
         GridLayout15                    matlab.ui.container.GridLayout
+        TextArea_2                      matlab.ui.control.TextArea
         ExportFvaluesButton             matlab.ui.control.Button
         ExportKvaluesButton             matlab.ui.control.Button
         PredictedDataLabel              matlab.ui.control.Label
@@ -192,7 +179,6 @@ classdef SapFlower < matlab.apps.AppBase
         Node2                           matlab.ui.container.TreeNode
         UITable5_2                      matlab.ui.control.Table
         UITable5                        matlab.ui.control.Table
-        SaveGapFillButton               matlab.ui.control.Button
         RawDataButton                   matlab.ui.control.Button
         PredictedDataButton             matlab.ui.control.Button
         GapFillButton                   matlab.ui.control.Button
@@ -226,6 +212,7 @@ classdef SapFlower < matlab.apps.AppBase
         ShowLegendMenu                  matlab.ui.container.Menu
     end
 
+    
     properties (Access = public)
         OriginalXData        double
         OriginalYData        double
@@ -286,132 +273,16 @@ classdef SapFlower < matlab.apps.AppBase
         TrainedSensors = {} % To store the list of sensors that have been trained
         PredictedSensors = {} % To store the list of sensors that have been predicted
         UIFigure
+        LastAction % A variable to store the last action ('delete' or 'inverse')
+        ActionHistory = {}; % A cell array to store the history of actions
 
     end
+
+
 
 %% Gapfilling and saving %%
 methods (Access = public)
 
-    function GapFillButtonPushed(app, event)
-        try
-            % Get checked sensors from the tree
-            checkedNodes = app.Tree.CheckedNodes;
-    
-            % Filter out the top-level "Sensors" node if it's selected
-            validSensorNodes = checkedNodes(~strcmp({checkedNodes.Text}, 'Sensors'));
-    
-            % Ensure at least one valid sensor is selected
-            if isempty(validSensorNodes)
-                msgbox('Please select at least one valid sensor.', 'No Sensor Selected', 'warn');
-                return;
-            end
-    
-            % Ensure that a model type is selected from app.Tree_3
-            if isempty(app.Tree_3.CheckedNodes)
-                msgbox('Please select a model type.', 'No Model Type Selected', 'warn');
-                return;
-            end
-            modelType = app.Tree_3.CheckedNodes(1).Text; % Assuming only one model type is selected
-    
-            % Clear the existing plot and reset variables
-            cla(app.UIAxes6_3, 'reset'); % Clear the plot completely
-            legend(app.UIAxes6_3, 'off'); % Turn off the legend to reset it
-            combinedGapFilledData = table(); % Reinitialize the combined gap-filled data table
-            legendEntries = {}; % Reset legend entries
-            legendHandles = []; % Reset legend handles
-    
-            % Colors for plotting different sensors
-            colors = lines(length(validSensorNodes));
-    
-            % Get raw and predicted data from UITable5 and UITable5_2
-            rawData = app.UITable5.Data;
-            predictedData = app.UITable5_2.Data;
-    
-            % Use the correct TIMESTAMP column name from the raw data
-            timestampColNameRaw = 'TIMESTAMP';
-            timestampColNamePred = 'TIMESTAMP';
-    
-            % Iterate over each selected sensor
-            for i = 1:length(validSensorNodes)
-                sensorName = validSensorNodes(i).Text;
-    
-                % Construct the predicted sensor name based on the selected model type
-                predictedSensorName = sprintf('%s_%s', sensorName, modelType);
-    
-                % Ensure that the columns for the current sensor are available
-                if ~ismember(sensorName, rawData.Properties.VariableNames) || ...
-                   ~ismember(predictedSensorName, predictedData.Properties.VariableNames)
-                    msgbox(sprintf('Data for sensor %s not found in raw or predicted data.', sensorName), ...
-                           'Data Not Found', 'warn');
-                    continue;
-                end
-    
-                % Extract the raw and predicted data for the current sensor
-                rawSensorData = rawData(:, {timestampColNameRaw, sensorName});
-                predictedSensorData = predictedData(:, {timestampColNamePred, predictedSensorName});
-    
-                % Align the data by TIMESTAMP and fill gaps in raw data using predictions
-                gapFilledData = rawSensorData;
-                gapIdx = isnan(gapFilledData{:, 2});
-                gapFilledData{gapIdx, 2} = predictedSensorData{gapIdx, 2};
-    
-                % Merge the gap-filled data into combined data
-                if isempty(combinedGapFilledData)
-                    combinedGapFilledData = gapFilledData;
-                else
-                    combinedGapFilledData = outerjoin(combinedGapFilledData, gapFilledData, ...
-                                                      'Keys', timestampColNameRaw, ...
-                                                      'MergeKeys', true, 'Type', 'full', ...
-                                                      'LeftVariables', 1:size(combinedGapFilledData, 2), ...
-                                                      'RightVariables', sensorName);
-                end
-    
-                % Plot the raw data for the current sensor
-                hold(app.UIAxes6_3, 'on');
-                rawPlotHandle = plot(app.UIAxes6_3, rawSensorData{:, timestampColNameRaw}, rawSensorData{:, 2}, ...
-                    'Color', colors(i, :), 'LineStyle', '-', 'LineWidth', 1);
-    
-                % Plot the gap-filled data, highlighting only the filled gaps without connecting lines
-                filledIdx = find(gapIdx); % Indices where gaps were filled
-                gapFilledPlotHandle = plot(app.UIAxes6_3, gapFilledData{filledIdx, timestampColNameRaw}, gapFilledData{filledIdx, 2}, ...
-                    'Color', colors(i, :), 'LineStyle', 'none', 'Marker', 'o', 'MarkerSize', 1);
-    
-                % Add unique legend entries for each sensor's raw and gap-filled data
-                legendHandles = [legendHandles, rawPlotHandle, gapFilledPlotHandle];
-                legendEntries = [legendEntries, sprintf('%s Raw', strrep(sensorName, '_', '\_')), ...
-                                 sprintf('%s Gap-Filled', strrep(sensorName, '_', '\_'))];
-            end
-    
-            % Add TIMESTAMP, VPD, and PAR_Den_Avg columns to the gap-filled data
-            combinedGapFilledData.TIMESTAMP = rawData.TIMESTAMP;
-            if ismember('VPD', rawData.Properties.VariableNames)
-                combinedGapFilledData.VPD = rawData.VPD;
-            end
-            if ismember('PAR_Den_Avg', rawData.Properties.VariableNames)
-                combinedGapFilledData.PAR_Den_Avg = rawData.PAR_Den_Avg;
-            end
-    
-            % Set plot labels and title
-            xlabel(app.UIAxes6_3, 'Timestamp');
-            ylabel(app.UIAxes6_3, 'Data');
-            title(app.UIAxes6_3, 'Gap-Filled Data for Selected Sensors');
-            
-            % Set the legend with unique entries
-            legend(app.UIAxes6_3, legendHandles, legendEntries);
-            
-            hold(app.UIAxes6_3, 'off');
-    
-            % Save the gap-filled data if needed
-            app.GapFilledData = combinedGapFilledData;
-            saveGapFilledData(app, combinedGapFilledData, validSensorNodes, timestampColNameRaw);
-        catch ME
-            % Handle errors and display a message to the user
-            errordlg(sprintf('An error occurred: %s', ME.message), 'Error');
-            disp(['Error in GapFillButtonPushed: ', ME.message]);
-        end
-    end
-
-    
     function saveGapFilledData(app, gapFilledData, checkedNodes, timestampColName)
         try
             % Ensure the output path is valid
@@ -458,18 +329,21 @@ methods (Access = public)
                     writetable(combinedData, gapFilledFilename);
                     
                     % Update the TextArea with the save status
-                    app.TextArea.Value = [app.TextArea.Value; {sprintf('Gap-filled data saved to %s', gapFilledFilename)}];
+                    app.TextArea_2.Value = [app.TextArea_2.Value; {sprintf('Gap-filled data saved to %s', gapFilledFilename)}];
+                    scroll(app.TextArea_2, "bottom");
                     drawnow; % Ensure the TextArea updates immediately
                 else
                     % If the sensor data is missing, notify the user
-                    app.TextArea.Value = [app.TextArea.Value; {sprintf('Sensor %s data is missing in GapFilledData.', sensorName)}];
+                    app.TextArea_2.Value = [app.TextArea_2.Value; {sprintf('Sensor %s data is missing in GapFilledData.', sensorName)}];
+                    scroll(app.TextArea_2, "bottom");
                     drawnow;
                 end
             end
         catch ME
             % Handle any errors and display a message to the user
             errordlg(sprintf('An error occurred while saving gap-filled data: %s', ME.message), 'Error');
-            app.TextArea.Value = [app.TextArea.Value; {sprintf('Error saving gap-filled data: %s', ME.message)}];
+            app.TextArea_2.Value = [app.TextArea_2.Value; {sprintf('Error saving gap-filled data: %s', ME.message)}];
+            scroll(app.TextArea_2, "bottom");
             drawnow;
         end
     end
@@ -524,63 +398,15 @@ methods (Access = public)
             writetable(gapFilledData, gapFilledFilename);
             
             % Notify the user
-            app.TextArea.Value = [app.TextArea.Value; {sprintf('Gap-filled data saved to %s', gapFilledFilename)}];
+            app.TextArea_2.Value = [app.TextArea_2.Value; {sprintf('Gap-filled data saved to %s', gapFilledFilename)}];
+            scroll(app.TextArea_2, "bottom");
             drawnow; % Ensure the TextArea updates immediately
     
         catch ME
             % Handle any errors and display a message to the user
             errordlg(sprintf('An error occurred while processing data for sensor %s: %s', sensorName, ME.message), 'Error');
-            app.TextArea.Value = [app.TextArea.Value; {sprintf('Error processing data for sensor %s: %s', sensorName, ME.message)}];
-            drawnow;
-        end
-    end
-
-    function SaveGapFillButtonPushed(app, event)
-        try
-            % Ensure a sensor is selected and gap-filled data exists
-            checkedNodes = app.Tree.CheckedNodes;
-            validSensorNodes = checkedNodes(~strcmp({checkedNodes.Text}, 'Sensors'));
-    
-            if isempty(validSensorNodes)
-                msgbox('Please select a sensor.', 'No Sensor Selected', 'warn');
-                return;
-            end
-            if isempty(app.GapFilledData)
-                msgbox('No gap-filled data available to save.', 'No Data', 'warn');
-                return;
-            end
-    
-            % Save the gap-filled data to the output path Gapfilled folder
-            outputPath = fullfile(app.Output.Value, 'Gapfilled');
-            if ~isfolder(outputPath)
-                mkdir(outputPath);
-            end
-    
-            % Iterate over each selected sensor
-            for i = 1:length(validSensorNodes)
-                sensorName = validSensorNodes(i).Text;
-    
-                % Ensure the columns exist in the GapFilledData table
-                if ismember(sensorName, app.GapFilledData.Properties.VariableNames)
-                    % Create a new table with the correct columns
-                    combinedData = app.GapFilledData(:, {'TIMESTAMP', 'VPD', 'PAR_Den_Avg', sensorName});
-    
-                    % Save the combined data to a CSV file
-                    gapFilledFilename = fullfile(outputPath, sprintf('GapFilled_%s.csv', sensorName));
-                    writetable(combinedData, gapFilledFilename);
-    
-                    % Update the TextArea with the save status
-                    app.TextArea.Value = [app.TextArea.Value; {sprintf('Gap-filled data saved to %s', gapFilledFilename)}];
-                    drawnow; % Ensure the TextArea updates immediately
-                else
-                    app.TextArea.Value = [app.TextArea.Value; {sprintf('Sensor %s data is missing in GapFilledData.', sensorName)}];
-                    drawnow;
-                end
-            end
-        catch ME
-            % Handle any unexpected errors
-            msgbox(sprintf('An error occurred: %s', ME.message), 'Error', 'error');
-            app.TextArea.Value = [app.TextArea.Value; {sprintf('An error occurred: %s', ME.message)}];
+            app.TextArea_2.Value = [app.TextArea_2.Value; {sprintf('Error processing data for sensor %s: %s', sensorName, ME.message)}];
+            scroll(app.TextArea_2, "bottom");
             drawnow;
         end
     end
@@ -608,227 +434,12 @@ methods (Access = public)
         catch ME
             % Handle any unexpected errors
             msgbox(sprintf('An error occurred while updating the sensor tree: %s', ME.message), 'Error', 'error');
-            app.TextArea.Value = [app.TextArea.Value; {sprintf('An error occurred while updating the sensor tree: %s', ME.message)}];
+            app.TextArea_2.Value = [app.TextArea_2.Value; {sprintf('An error occurred while updating the sensor tree: %s', ME.message)}];
+            scroll(app.TextArea_2, "bottom");
             drawnow;
         end
     end
 
-
-    function RawDataButtonPushed(app, event)
-        try
-            % Get checked sensors from the tree
-            checkedNodes = app.Tree.CheckedNodes;
-            
-            % Filter out the top-level "Sensors" node if it's selected
-            validSensorNodes = checkedNodes(~strcmp({checkedNodes.Text}, 'Sensors'));
-            
-            % Ensure at least one valid sensor is selected
-            if isempty(validSensorNodes)
-                % Use msgbox or update TextArea with the message
-                msgbox('Please select at least one valid sensor.', 'No Sensor Selected', 'warn');
-                return;
-            end
-            
-            % Initialize variables to accumulate data
-            combinedRawData = table();
-            sensorNames = {}; % To store the names of the sensors being loaded
-            
-            % Iterate over each selected sensor and load the raw data
-            for i = 1:length(validSensorNodes)
-                sensorName = validSensorNodes(i).Text;
-                
-                % Load raw data for the current sensor
-                rawData = loadRawData(app, sensorName);
-                
-                % Rename the sensor data column to include the sensor name
-                rawData.Properties.VariableNames{2} = sensorName; % Assumes data is in the second column
-                
-                % Store the sensor name for later use
-                sensorNames{end+1} = sensorName;
-                
-                % Align data by TIMESTAMP and merge
-                if isempty(combinedRawData)
-                    combinedRawData = rawData;
-                else
-                    % Merge tables by TIMESTAMP, keeping all timestamps from both tables
-                    combinedRawData = outerjoin(combinedRawData, rawData, 'Keys', 'TIMESTAMP', ...
-                        'MergeKeys', true, 'Type', 'full', 'LeftVariables', 1:size(combinedRawData, 2), ...
-                        'RightVariables', sensorName);
-                end
-            end
-            
-            % Update UITable5 with the combined raw data
-            app.UITable5.Data = combinedRawData;
-            
-            % Set the column names in UITable5 to match the sensor names
-            combinedColumnNames = combinedRawData.Properties.VariableNames;
-            app.UITable5.ColumnName = combinedColumnNames;
-            
-            % Plot the raw data for each sensor on UIAxes6_4
-            cla(app.UIAxes6_4); % Clear existing plots
-            hold(app.UIAxes6_4, 'on');
-            
-            % Generate distinct colors for each sensor
-            colors = lines(length(sensorNames)); 
-            colorIndex = 1;
-            
-            for i = 1:length(sensorNames)
-                % Escape underscores to avoid subscripts in the legend
-                displayName = strrep(sensorNames{i}, '_', '\_');
-                % Use the actual sensor name to plot each sensor's data with a different color
-                sensorName = sensorNames{i};
-                plot(app.UIAxes6_4, combinedRawData.TIMESTAMP, combinedRawData{:, sensorName}, ...
-                    'DisplayName', displayName, 'Color', colors(colorIndex, :));
-                colorIndex = colorIndex + 1;
-            end
-            
-            hold(app.UIAxes6_4, 'off');
-            
-            % Set plot labels and title
-            xlabel(app.UIAxes6_4, 'Timestamp');
-            ylabel(app.UIAxes6_4, 'Raw Data');
-            title(app.UIAxes6_4, 'Raw Data for Selected Sensors');
-            legend(app.UIAxes6_4, 'show');
-            
-        catch ME
-            % Handle any unexpected errors
-            msgbox(sprintf('An error occurred: %s', ME.message), 'Error', 'error');
-            app.TextArea.Value = [app.TextArea.Value; {sprintf('An error occurred while loading raw data: %s', ME.message)}];
-            drawnow;
-        end
-    end
-
-    function PredictedDataButtonPushed(app, event)
-        try
-            % Get checked sensors from the tree
-            checkedNodes = app.Tree.CheckedNodes;
-            
-            % Filter out the top-level "Sensors" node if it's selected
-            validSensorNodes = checkedNodes(~strcmp({checkedNodes.Text}, 'Sensors'));
-            
-            % Ensure at least one valid sensor is selected
-            if isempty(validSensorNodes)
-                % Use msgbox or update TextArea with the message
-                msgbox('Please select at least one valid sensor.', 'No Sensor Selected', 'warn');
-                return;
-            end
-            
-            % Initialize variables to accumulate data
-            combinedPredictedData = table();
-            sensorNames = {}; % To store the names of the sensors being loaded
-            modelOptionsPerSensor = cell(1, length(validSensorNodes));
-            
-            % Iterate over each selected sensor to load available model types
-            for i = 1:length(validSensorNodes)
-                sensorName = validSensorNodes(i).Text;
-                modelFiles = dir(fullfile(app.Output.Value, 'PredictedData', sprintf('Predicted_*_%s.csv', sensorName)));
-                
-                % Collect available model types for the sensor
-                modelTypes = cell(length(modelFiles), 1);
-                for j = 1:length(modelFiles)
-                    [~, name, ~] = fileparts(modelFiles(j).name);
-                    extractedType = extractBetween(name, 'Predicted_', sprintf('_%s', sensorName));
-                    if ~isempty(extractedType)
-                        modelTypes{j} = extractedType{1}; % Ensure it's a char array
-                    end
-                end
-                modelOptionsPerSensor{i} = unique(modelTypes(~cellfun('isempty', modelTypes)));
-            end
-            
-            % Ask the user to select the model type for each sensor
-            selectedModelTypes = cell(1, length(validSensorNodes));
-            for i = 1:length(validSensorNodes)
-                sensorName = validSensorNodes(i).Text;
-                modelOptions = modelOptionsPerSensor{i};
-                [indx, tf] = listdlg('PromptString', sprintf('Select model type for sensor %s:', sensorName), ...
-                                     'SelectionMode', 'single', ...
-                                     'ListString', modelOptions, ...
-                                     'ListSize', [260, 200]);  % Adjust the width and height
-                if tf
-                    selectedModelTypes{i} = modelOptions{indx};
-                else
-                    % If the user cancels the dialog, skip this sensor
-                    selectedModelTypes{i} = [];
-                end
-            end
-    
-            
-            % Iterate over each selected sensor to load the predicted data
-            for i = 1:length(validSensorNodes)
-                sensorName = validSensorNodes(i).Text;
-                selectedModelType = selectedModelTypes{i};
-                
-                if isempty(selectedModelType)
-                    continue; % Skip sensors with no model type selected
-                end
-                
-                % Load predicted data for the current sensor and model type
-                predictedData = loadPredictedData(app, sensorName, selectedModelType);
-                
-                % Dynamically find the column name for the predicted sapflow data
-                sapflowColumnName = predictedData.Properties.VariableNames{find(contains(predictedData.Properties.VariableNames, 'PredictedSapflow'), 1)};
-                
-                % Extract only the TIMESTAMP and PredictedSapflow columns
-                predictedData = predictedData(:, {'TIMESTAMP', sapflowColumnName});
-                
-                % Rename the PredictedSapflow column to include the sensor name and model type
-                renamedColumn = sprintf('%s_%s', sensorName, selectedModelType);
-                predictedData.Properties.VariableNames{2} = renamedColumn;
-                
-                % Store the sensor name for later use
-                sensorNames{end+1} = renamedColumn;
-                
-                % Merge predicted data based on TIMESTAMP, using the longest range
-                if isempty(combinedPredictedData)
-                    combinedPredictedData = predictedData;
-                else
-                    % Merge tables by TIMESTAMP, keeping all timestamps from both tables
-                    combinedPredictedData = outerjoin(combinedPredictedData, predictedData, 'Keys', 'TIMESTAMP', ...
-                        'MergeKeys', true, 'Type', 'full', 'LeftVariables', 1:size(combinedPredictedData, 2), ...
-                        'RightVariables', renamedColumn);
-                end
-            end
-            
-            % Update UITable5_2 with the combined predicted data
-            app.UITable5_2.Data = combinedPredictedData;
-            
-            % Set the column names in UITable5_2 to match the sensor names
-            combinedColumnNames = combinedPredictedData.Properties.VariableNames;
-            app.UITable5_2.ColumnName = combinedColumnNames;
-            
-            % Plot the predicted data for each sensor on UIAxes6_2
-            cla(app.UIAxes6_2); % Clear existing plots
-            hold(app.UIAxes6_2, 'on');
-            
-            % Generate distinct colors for each sensor
-            colors = lines(length(sensorNames)); 
-            colorIndex = 1;
-            
-            for i = 1:length(sensorNames)
-                % Escape underscores to avoid subscripts in the legend
-                displayName = strrep(sensorNames{i}, '_', '\_');
-                % Use the actual sensor name to plot each sensor's data with a different color
-                sensorName = sensorNames{i};
-                plot(app.UIAxes6_2, combinedPredictedData.TIMESTAMP, combinedPredictedData{:, sensorName}, ...
-                    'DisplayName', displayName, 'Color', colors(colorIndex, :));
-                colorIndex = colorIndex + 1;
-            end
-            
-            hold(app.UIAxes6_2, 'off');
-            
-            % Set plot labels and title
-            xlabel(app.UIAxes6_2, 'Timestamp');
-            ylabel(app.UIAxes6_2, 'Predicted Data');
-            title(app.UIAxes6_2, 'Predicted Data for Selected Sensors');
-            legend(app.UIAxes6_2, 'show');
-            
-        catch ME
-            % Handle any unexpected errors
-            msgbox(sprintf('An error occurred: %s', ME.message), 'Error', 'error');
-            app.TextArea.Value = [app.TextArea.Value; {sprintf('An error occurred while loading predicted data: %s', ME.message)}];
-            drawnow;
-        end
-    end
 
     function predictedData = loadPredictedData(app, sensorName, modelType)
         try
@@ -1092,11 +703,6 @@ methods (Access = public)
         hold off;
     end
 
-    function autoCleanedSapflowButtonPushed(app, ~)
-            app.plotExampleCleanedSapflow();
-            
-    end
-
 end
 
 %% Load trained model and make predictions %%
@@ -1191,34 +797,6 @@ methods (Access = public)
             % Handle errors during the saving process
             uialert(app.UIFigure, ['Error saving predictions: ', ME.message], 'Error');
         end
-    end
-
-    function LoadModelsButtonPushed(app, event)
-        loadTrainedModels(app);
-    end
-
-    function MakePredictionsButtonPushed(app, event)
-        makePredictionsUsingModel(app);
-    end
-
-    % Callback for OutputPathButton
-    function OutputPathButtonPushed(app, event)
-        % Open a dialog to select a folder
-        selectedPath = uigetdir();
-        
-        % Check if the user canceled the selection
-        if selectedPath == 0
-            % User canceled the dialog, you can handle it accordingly
-            disp('User canceled the path selection.');
-            return;
-        end
-        
-        % Set the selected path to the Output EditField
-        app.Output.Value = selectedPath;
-        
-        % Display the selected path in the TextArea or Console for confirmation
-        disp(['Selected Output Path: ', selectedPath]);
-        app.TextArea.Value = [app.TextArea.Value; {['Selected Output Path: ', selectedPath]}];
     end
 
 end
@@ -1339,6 +917,7 @@ methods (Access = public)
             writetable(predictedDataTable, outputFilename);
             app.TextArea.Value = [app.TextArea.Value; ...
                 sprintf('Predicted data saved to %s\n', outputFilename)];
+            scroll(app.TextArea, "bottom");
             drawnow; % Ensure the TextArea updates immediately
         
         catch ME
@@ -1352,6 +931,7 @@ methods (Access = public)
     function cleanAndTrainSapflowModel(app)
         % Clear the TextArea before new output
         app.TextArea.Value = {'Starting the training process...'};
+        scroll(app.TextArea, 'bottom');
         drawnow;
     
         try
@@ -1362,10 +942,12 @@ methods (Access = public)
             if isfield(app, 'PreviousTableData') && ~isempty(app.PreviousTableData)
                 if isequal(app.UITable4.Data, app.PreviousTableData)
                     app.TextArea.Value = [app.TextArea.Value; {'No changes detected in the data. Skipping cleaning and retraining...'}];
+                    scroll(app.TextArea, 'bottom');
                     drawnow;
                     return; % Skip further processing if no changes are detected
                 else
                     app.TextArea.Value = [app.TextArea.Value; {'Changes detected in the data. Proceeding with cleaning and retraining...'}];
+                    scroll(app.TextArea, 'bottom');
                     drawnow;
                 end
             end
@@ -1383,6 +965,7 @@ methods (Access = public)
                 if isempty(segmentedData)
                     % If no data is found within the user-defined date range, use the full range of the data
                     app.TextArea.Value = [app.TextArea.Value; {'No data available within the selected date range. Using the full data range.'}];
+                    scroll(app.TextArea, 'bottom');
                     segmentedData = app.UITable4.Data;
                 end
             end
@@ -1414,6 +997,7 @@ methods (Access = public)
                 if all(cleanedDataAvailable)
                     data = app.CleanedData;  % Use the already cleaned data
                     app.TextArea.Value = [app.TextArea.Value; {'Using previously cleaned data. Skipping data cleaning...'}];
+                    scroll(app.TextArea, 'bottom');
                     drawnow;
                 end
             end
@@ -1467,6 +1051,7 @@ methods (Access = public)
                     progressText = sprintf('Cleaning sensor %d of %d (%.2f%% complete). Elapsed time: %.2fs, Estimated time remaining: %.2fs', ...
                         sensorIndex, numSensors, (sensorIndex / numSensors) * 100, elapsedTime, remainingTime);
                     app.TextArea.Value = [app.TextArea.Value; {progressText}];
+                    scroll(app.TextArea, 'bottom');
                     drawnow;
                 end
     
@@ -1583,6 +1168,7 @@ methods (Access = public)
                 progressText = sprintf('Training and validating sensor %d of %d (%.2f%% complete). Elapsed time: %.2fs, Estimated time remaining: %.2fs', ...
                     sensorIndex, numSensors, (sensorIndex / numSensors) * 100, elapsedTime, remainingTime);
                 app.TextArea.Value = [app.TextArea.Value; {progressText}];
+                scroll(app.TextArea, 'bottom');
                 drawnow;
             end
     
@@ -1593,12 +1179,14 @@ methods (Access = public)
             app.PreviousTableData = app.UITable4.Data;
     
             app.TextArea.Value = [app.TextArea.Value; {'Data cleaning, model training, and validation complete.'}];
+            scroll(app.TextArea, 'bottom');
             drawnow;
     
         catch ME
             % Handle any errors that occur during the training process
             errorMessage = sprintf('Error occurred: %s', ME.message);
             app.TextArea.Value = [app.TextArea.Value; {errorMessage}];
+            scroll(app.TextArea, 'bottom');
             drawnow; % Ensure the error is shown
             rethrow(ME); % Optionally rethrow the error if you want to stop execution
         end
@@ -1759,6 +1347,7 @@ methods (Access = public)
         try
             % Update app.TextArea with model type and training start message
             app.TextArea.Value = [app.TextArea.Value; sprintf('Training %s model...\n', modelType)];
+            scroll(app.TextArea, 'bottom');
             drawnow;
             
             % Train the model based on the selected type
@@ -1769,6 +1358,8 @@ methods (Access = public)
                     model = trainLSTMModel(app);  % LSTM model training
                 case 'GRU'
                     model = trainGRUModel(app);  % GRU model training
+                case 'Random Forest'
+                    model = trainRandomForestModel(app);  % Random Forest model training
                 case 'Simple Linear Model'
                     model = fitlm(app.XTrain, app.YTrain);
                     % Output model structure and statistics
@@ -1782,11 +1373,11 @@ methods (Access = public)
                     na = 1;
                     nb = ones(1, numPredictors);
                     nk = zeros(1, numPredictors);
-        
+    
                     % Manually handle missing data
                     XTrainCleaned = fillmissing(app.XTrain, 'linear');
                     YTrainCleaned = fillmissing(app.YTrain, 'linear');
-        
+    
                     % Create iddata object with cleaned data
                     arxData = iddata(YTrainCleaned, XTrainCleaned);
                     model = arx(arxData, [na nb nk]);
@@ -1796,11 +1387,11 @@ methods (Access = public)
                     nb = ones(1, numPredictors);
                     nc = 1;
                     nk = zeros(1, numPredictors);
-        
+    
                     % Manually handle missing data
                     XTrainCleaned = fillmissing(app.XTrain, 'linear');
                     YTrainCleaned = fillmissing(app.YTrain, 'linear');
-        
+    
                     % Create iddata object with cleaned data
                     armaxData = iddata(YTrainCleaned, XTrainCleaned);
                     model = armax(armaxData, [na nb nc nk]);
@@ -1810,12 +1401,14 @@ methods (Access = public)
             
             % Update app.TextArea with training completion message
             app.TextArea.Value = [app.TextArea.Value; sprintf('%s model training completed.\n', modelType)];
+            scroll(app.TextArea, 'bottom');
             drawnow;
     
         catch ME
             % Handle any unexpected errors
             app.TextArea.Value = [app.TextArea.Value; sprintf('Error during %s model training: %s\n', modelType, ME.message)];
             msgbox(sprintf('An error occurred during %s model training: %s', modelType, ME.message), 'Error', 'error');
+            scroll(app.TextArea, 'bottom');
             drawnow;
             rethrow(ME);
         end
@@ -1848,6 +1441,7 @@ methods (Access = public)
         catch ME
             % Handle any unexpected errors
             app.TextArea.Value = [app.TextArea.Value; {sprintf('Error displaying linear model statistics: %s\n', ME.message)}];
+            scroll(app.TextArea, 'bottom');
             msgbox(sprintf('An error occurred while displaying linear model statistics: %s', ME.message), 'Error', 'error');
             drawnow;
         end
@@ -1917,6 +1511,7 @@ methods (Access = public)
             message = sprintf('Epoch: %d, Iteration: %d, Loss: %.4f\n', ...
                 info.Epoch, info.Iteration, info.TrainingLoss);
             app.TextArea.Value = [app.TextArea.Value; message];
+            scroll(app.TextArea, 'bottom');
             drawnow; % Update the TextArea in real-time
         end
     
@@ -1958,6 +1553,7 @@ methods (Access = public)
             message = sprintf('Epoch: %d, Iteration: %d, Loss: %.4f\n', ...
                 info.Epoch, info.Iteration, info.TrainingLoss);
             app.TextArea.Value = [app.TextArea.Value; message];
+            scroll(app.TextArea, 'bottom');
             drawnow; % Update the TextArea in real-time
         end
         
@@ -1976,6 +1572,16 @@ methods (Access = public)
 
     end
 
+
+    function model = trainRandomForestModel(app)
+    
+        % Train Random Forest Model
+        model = fitrensemble(app.XTrain, app.YTrain, 'Method', 'Bag', 'NumLearningCycles', 200, 'Learners', 'tree');
+    
+        disp('Random Forest model trained successfully.');
+    end
+
+
     % Function to validate the model
     function validateModel(app, modelType, model, sensorName)
         try
@@ -1983,10 +1589,10 @@ methods (Access = public)
             if isempty(app.XValidation)
                 error('No valid data points found for validation.');
             end
-        
+    
             % Initialize the predictions variable
             predictions = [];
-        
+    
             % Make predictions based on the model type
             switch modelType
                 case 'BiLSTM'
@@ -1995,6 +1601,8 @@ methods (Access = public)
                     predictions = predict(model, app.XValidation');
                 case 'GRU'
                     predictions = predict(model, app.XValidation');
+                case 'Random Forest'
+                    predictions = predict(model, app.XValidation);  % Random Forest does not need transposing
                 case {'Simple Linear Model', 'Multiple Linear Model'}
                     predictions = predict(model, app.XValidation);
                 case {'ARX', 'ARMAX'}
@@ -2005,22 +1613,23 @@ methods (Access = public)
                 otherwise
                     error('Unsupported model type.');
             end
-        
+    
             % Ensure no negative values in the predictions
             predictions(predictions < 0) = 0;
-        
+    
             % Calculate the prediction error
             predictionError = app.YValidation - predictions;
-        
+    
             % Calculate summary statistics
             mae = mean(abs(predictionError)); % Mean Absolute Error
             rmse = sqrt(mean(predictionError.^2)); % Root Mean Square Error
-        
+    
             % Display only the MAE and RMSE
             summaryText = sprintf('Sensor %s - MAE: %.4f, RMSE: %.4f', sensorName, mae, rmse);
             app.TextArea.Value = [app.TextArea.Value; {summaryText}];
+            scroll(app.TextArea, 'bottom');
             drawnow; % Ensure the TextArea updates immediately
-        
+    
             % Plot true vs predicted for validation
             figure;
             plot(app.YValidation, 'b', 'DisplayName', 'True Data');
@@ -2035,6 +1644,7 @@ methods (Access = public)
         catch ME
             % Handle any unexpected errors
             app.TextArea.Value = [app.TextArea.Value; {sprintf('Error validating model for sensor %s: %s', sensorName, ME.message)}];
+            scroll(app.TextArea, 'bottom');
             msgbox(sprintf('An error occurred while validating the model: %s', ME.message), 'Error', 'error');
             drawnow;
         end
@@ -2080,6 +1690,7 @@ methods (Access = public)
         catch ME
             % Handle any unexpected errors
             app.TextArea.Value = [app.TextArea.Value; {sprintf('Error plotting segmented data: %s', ME.message)}];
+            scroll(app.TextArea, 'bottom');
             msgbox(sprintf('An error occurred while plotting segmented data: %s', ME.message), 'Error', 'error');
             drawnow;
         end
@@ -2151,15 +1762,15 @@ methods (Access = public)
             modelData = loadTrainedModel(app, modelType, sensorName);
             model = modelData.model;  % Access the model field
             predictingVariableNames = modelData.predictingVariables;
-        
+    
             % Initialize validIdx to true
             validIdx = true(height(app.UITable4.Data), 1);
-        
+    
             % Determine valid indices based on the selected predicting variables
             for j = 1:length(predictingVariableNames)
                 columnName = predictingVariableNames{j};
                 columnData = app.UITable4.Data.(columnName);
-        
+    
                 if isdatetime(columnData)
                     % Skip NaN check for datetime columns
                     continue;
@@ -2168,18 +1779,18 @@ methods (Access = public)
                     validIdx = validIdx & ~isnan(columnData);
                 end
             end
-        
+    
             % Ensure there are valid data points for making predictions
             if sum(validIdx) == 0
                 error('No valid data points found for making predictions.');
             end
-        
+    
             % Prepare the feature matrix X for prediction using the stored predicting variables
             X = [];
             for j = 1:length(predictingVariableNames)
                 columnName = predictingVariableNames{j};
                 columnData = app.UITable4.Data.(columnName)(validIdx);
-        
+    
                 if isdatetime(columnData)
                     % Convert datetime to hour and minute and one-hot encode
                     hourData = hour(columnData);
@@ -2190,7 +1801,7 @@ methods (Access = public)
                     X = [X, columnData];
                 end
             end
-        
+    
             % Make predictions based on the model type
             switch modelType
                 case 'BiLSTM'
@@ -2199,6 +1810,8 @@ methods (Access = public)
                     predictions = predict(model, X');
                 case 'GRU'
                     predictions = predict(model, X');
+                case 'Random Forest'
+                    predictions = predict(model, X);  % Random Forest uses `predict` directly
                 case {'Simple Linear Model', 'Multiple Linear Model'}
                     predictions = predict(model, X);
                 case {'ARX', 'ARMAX'}
@@ -2207,7 +1820,7 @@ methods (Access = public)
                     outputData = fullY(validIdx);
                     outputDataCleaned = fillmissing(outputData, 'linear');
                     XCleaned = fillmissing(X, 'linear');
-        
+    
                     % Create iddata object with cleaned data
                     predictionData = iddata(outputDataCleaned, XCleaned);
                     arxPredictions = predict(model, predictionData, 1);
@@ -2215,19 +1828,21 @@ methods (Access = public)
                 otherwise
                     error('Unsupported model type.');
             end
-        
+    
             % Ensure no negative values in the predictions
             predictions(predictions < 0) = 0;
-        
+    
             % Update the TextArea with the prediction completion message
             app.TextArea.Value = [app.TextArea.Value; ...
                 sprintf('Predictions completed for sensor %s using %s model.\n', sensorName, modelType)];
+            scroll(app.TextArea, 'bottom');
             drawnow; % Ensure the TextArea updates immediately
     
         catch ME
             % Handle any unexpected errors
             app.TextArea.Value = [app.TextArea.Value; ...
                 sprintf('Error making predictions for sensor %s using %s model: %s\n', sensorName, modelType, ME.message)];
+            scroll(app.TextArea, 'bottom');
             msgbox(sprintf('An error occurred during predictions: %s', ME.message), 'Error', 'error');
             rethrow(ME);
         end
@@ -2264,12 +1879,14 @@ methods (Access = public)
             writetable(predictedDataTable, outputFilename);
             app.TextArea.Value = [app.TextArea.Value; ...
                 sprintf('Predicted data saved to %s\n', outputFilename)];
+            scroll(app.TextArea, 'bottom');
             drawnow; % Ensure the TextArea updates immediately
     
         catch ME
             % Handle any unexpected errors
             app.TextArea.Value = [app.TextArea.Value; ...
                 sprintf('Error saving predicted data for sensor %s using %s model: %s\n', sensorName, modelType, ME.message)];
+            scroll(app.TextArea, 'bottom');
             msgbox(sprintf('An error occurred while saving predicted data: %s', ME.message), 'Error', 'error');
             drawnow;
         end
@@ -2326,19 +1943,10 @@ methods (Access = public)
                 % Handle any errors that occur during prediction
                 errorMessage = sprintf('Error making predictions for sensor %s: %s', sensorName, ME.message);
                 app.TextArea.Value = [app.TextArea.Value; {errorMessage}];
+                scroll(app.TextArea, 'bottom');
                 drawnow;
             end
         end
-    end
-
-% Button pushed function: autoClean
-    function StartTrainingButtonPushed(app, event)
-        cleanAndTrainSapflowModel(app);
-    end
-
-    % Button pushed function: PredictButton
-    function PredictButtonPushed(app, event)
-        startPrediction(app);
     end
 
 end
@@ -2468,31 +2076,29 @@ end
                         % Append the F-value column to the combinedData table
                         combinedFData = [combinedFData, sensorFData];
                     else
-                        app.TextArea2.Value = [app.TextArea2.Value; {sprintf('No gap-filled data available for sensor %s.', sensorName)}];
+                        app.TextArea_2.Value = [app.TextArea_2.Value; {sprintf('No gap-filled data available for sensor %s.', sensorName)}];
+                        scroll(app.TextArea_2, "bottom");
                     end
                 end
                 
                 % Attempt to write the table to the specified file
                 try
                     writetable(combinedFData, fOutputFilename);
-                    app.TextArea2.Value = [app.TextArea2.Value; {['F-values exported successfully to ', fOutputFilename]}];
+                    app.TextArea_2.Value = [app.TextArea_2.Value; {['F-values exported successfully to ', fOutputFilename]}];
+                    scroll(app.TextArea_2, "bottom");
                 catch err
                     errordlg(err.message, 'Export failed');
-                    app.TextArea2.Value = [app.TextArea2.Value; {['Error exporting F-values: ', err.message]}];
+                    app.TextArea_2.Value = [app.TextArea_2.Value; {['Error exporting F-values: ', err.message]}];
+                    scroll(app.TextArea_2, "bottom");
                 end
                 
             catch ME
                 errordlg(ME.message, 'Error');
-                app.TextArea2.Value = [app.TextArea2.Value; {['An error occurred: ', ME.message]}];
+                app.TextArea_2.Value = [app.TextArea_2.Value; {['An error occurred: ', ME.message]}];
+                scroll(app.TextArea_2, "bottom");
             end
             
             app.endWait();
-        end
-
-        % Button pushed function: ExportKValuesButton
-        function ExportFvaluesButtonPushed(app, event)
-            % Call the export function
-            exportFValuesAfterGapFill(app);
         end
 
 
@@ -2571,32 +2177,30 @@ end
                         % Append the K-value column to combinedData
                         combinedData = [combinedData, sensorData];
                     else
-                        app.TextArea2.Value = [app.TextArea2.Value; {sprintf('No gap-filled data available for sensor %s.', sensorName)}];
+                        app.TextArea_2.Value = [app.TextArea_2.Value; {sprintf('No gap-filled data available for sensor %s.', sensorName)}];
+                        scroll(app.TextArea_2, "bottom");
                     end
                 end
                 
                 % Attempt to write the table to the specified file
                 try
                     writetable(combinedData, outputFilename);
-                    app.TextArea2.Value = [app.TextArea2.Value; {['K-values exported successfully to ', outputFilename]}];
+                    app.TextArea_2.Value = [app.TextArea_2.Value; {['K-values exported successfully to ', outputFilename]}];
+                    scroll(app.TextArea_2, "bottom");
                 catch err
                     errordlg(err.message, 'Export failed');
-                    app.TextArea2.Value = [app.TextArea2.Value; {['Error exporting K-values: ', err.message]}];
+                    app.TextArea_2.Value = [app.TextArea_2.Value; {['Error exporting K-values: ', err.message]}];
+                    scroll(app.TextArea_2, "bottom");
                 end
                 
             catch ME
                 % General error handling
                 errordlg(ME.message, 'Error');
-                app.TextArea2.Value = [app.TextArea2.Value; {['An error occurred: ', ME.message]}];
+                app.TextArea_2.Value = [app.TextArea_2.Value; {['An error occurred: ', ME.message]}];
+                scroll(app.TextArea_2, "bottom");
             end
             
             app.endWait();
-        end
-
-        % Button pushed function: ExportKValuesButton
-        function ExportKvaluesButtonPushed(app, event)
-            % Call the export function
-            exportKValuesAfterGapFill(app);
         end
 
         % Export current K estimates
@@ -2646,9 +2250,11 @@ end
             try
                 writetable(combinedData, fullfile(path, filename));
                 app.TextArea2.Value = [app.TextArea2.Value; {['Data exported successfully to ', fullfile(path, filename)]}];
+                scroll(app.TextArea2, "bottom");
             catch err
                 errordlg(err.message, 'Export failed');
                 app.TextArea2.Value = [app.TextArea2.Value; {['Error exporting data: ', err.message]}];
+                scroll(app.TextArea2, "bottom");
             end
 
             app.endWait();
@@ -2711,9 +2317,11 @@ end
             try
                 writetable(combinedData, fullfile(path, filename));
                 app.TextArea2.Value = [app.TextArea2.Value; {['Data exported successfully to ', fullfile(path, filename)]}];
+                scroll(app.TextArea2, "bottom");
             catch err
                 errordlg(err.message, 'Export failed');
                 app.TextArea2.Value = [app.TextArea2.Value; {['Error exporting data: ', err.message]}];
+                scroll(app.TextArea2, "bottom");
             end
         
             app.endWait();
@@ -3100,8 +2708,6 @@ end
                 
                 % Plot dTmax baseline
                 plot(app.UIAxes5, app.timestamp, dTmax_baseline, '-', 'Color', [0.5 0.3, 0.5], 'LineWidth', 0.3, 'DisplayName', 'dTmax baseline');
-
-                % plot(app.UIAxes5, app.timestamp, k_values_nightly, '-.', 'Color', [0.2 0.2, 0.9], 'LineWidth', 0.3, 'DisplayName', 'Nightly K');
        
                
                 % Set labels and title for UIAxes5
@@ -3123,10 +2729,12 @@ end
         
                 % Append success message to TextArea2
                 app.TextArea2.Value = [app.TextArea2.Value; {'Data plotted successfully.'}];
+                scroll(app.TextArea2, "bottom");
         
             catch ME
                 % Append error message to TextArea2
                 app.TextArea2.Value = [app.TextArea2.Value; {['Warning/Error: ', ME.message]}];
+                scroll(app.TextArea2, "bottom");
             end
         end
 
@@ -3163,82 +2771,16 @@ end
                 % Copy the file to the backup folder
                 copyfile(filePath, backupFilePath);
                 app.TextArea2.Value = [app.TextArea2.Value; {['Backup created at: ', backupFilePath]}];
+                scroll(app.TextArea2, "bottom");
                 app.BackupCreated = true;
             else
                 app.TextArea2.Value = [app.TextArea2.Value; {['Backup already exists at: ', backupFilePath]}];
+                scroll(app.TextArea2, "bottom");
             end
         end
     end
 
     methods (Access = public)
-        function PreviousSensorButtonPushed(app, ~)
-            try
-                % Define the sap flow columns
-                yCols = app.SapFlowCols; 
-                % Get the current Y column selection
-                currentY = app.YDropDown.Value;
-                % Find the index of the current selection
-                currentIndex = find(strcmp(yCols, currentY), 1);
-    
-                % Check if the current index is valid
-                if isempty(currentIndex)
-                    nextIndex = 1; % Default to the first sensor if current index is invalid
-                else
-                    % Move to the previous sensor, with wrapping
-                    if currentIndex == 1
-                        nextIndex = length(yCols); % Wrap around to the last column
-                    else
-                        nextIndex = currentIndex - 1;
-                    end
-                end
-    
-                % Update the Y dropdown selection
-                app.YDropDown.Value = yCols{nextIndex};
-    
-                % Replot the data with the new Y selection
-                app.plotData(false); % Maintain current limits
-            catch ME
-                % Handle errors and provide feedback
-                errorMessage = sprintf('Error in PreviousSensorButtonPushed: %s', ME.message);
-                disp(errorMessage);
-                msgbox(errorMessage, 'Error', 'error');
-            end
-        end
-    
-        function NextSensorButtonPushed(app, ~)
-            try
-                % Define the sap flow columns
-                yCols = app.SapFlowCols;
-                % Get the current Y column selection
-                currentY = app.YDropDown.Value;
-                % Find the index of the current selection
-                currentIndex = find(strcmp(yCols, currentY), 1);
-    
-                % Check if the current index is valid
-                if isempty(currentIndex)
-                    previousIndex = 1; % Default to the first sensor if current index is invalid
-                else
-                    % Move to the next sensor, with wrapping
-                    if currentIndex == length(yCols)
-                        previousIndex = 1; % Wrap around to the first column
-                    else
-                        previousIndex = currentIndex + 1;
-                    end
-                end
-    
-                % Update the Y dropdown selection
-                app.YDropDown.Value = yCols{previousIndex};
-    
-                % Replot the data with the new Y selection
-                app.plotData(false); % Maintain current limits
-            catch ME
-                % Handle errors and provide feedback
-                errorMessage = sprintf('Error in NextSensorButtonPushed: %s', ME.message);
-                disp(errorMessage);
-                msgbox(errorMessage, 'Error', 'error');
-            end
-        end
-    
         % Include this function to connect buttons with callbacks
         function setButtonCallbacks(app)
             try
@@ -3273,7 +2815,6 @@ end
                 app.SubtractionHistory(app.SubtractionIndex+1:end) = [];
             end
         end
-
 
         function deleteSelectedPoints(app)
             % Save current state to deletion history
@@ -3367,6 +2908,10 @@ end
                     data(selectedPointsIndex) = NaN; % Default case for other types
                 end
             end
+            % Set LastAction to 'delete'
+            app.LastAction = 'delete';
+            % Add 'delete' action to the history
+            app.ActionHistory{end+1} = 'delete';
         end
 
         function inverseSelectedPoints(app)
@@ -3416,12 +2961,12 @@ end
             % Nested function to handle inversion of selected points
             function data = invertSelectedPoints(data, selectedPointsIndex)
                 if isnumeric(data)
-                    data(selectedPointsIndex) = 1 - data(selectedPointsIndex);
+                    data(selectedPointsIndex) = app.MaxSapFlowEditField.Value - data(selectedPointsIndex);
                 elseif iscell(data)
                     for i = 1:length(selectedPointsIndex)
                         idx = selectedPointsIndex(i);
                         if isnumeric(data{idx})
-                            data{idx} = 1 - data{idx};
+                            data{idx} = app.MaxSapFlowEditField.Value - data{idx};
                         else
                             data{idx} = NaN; % Convert non-numeric cells to NaN
                         end
@@ -3430,6 +2975,10 @@ end
                     msgbox('Data type not supported for inversion', 'Error', 'error');
                 end
             end
+            % Set LastAction to 'inverse'
+            app.LastAction = 'inverse';
+            % Add 'inverse' action to the history
+            app.ActionHistory{end+1} = 'inverse';
         end
 
         function undoLastDeletion(app)
@@ -3442,7 +2991,7 @@ end
             end
         end
 
-        function undoLastSubtraction(app)
+        function undoLastSubstraction(app)
             if app.SubtractionIndex > 0
                 app.UITable4.Data = app.SubtractionHistory{app.SubtractionIndex};
                 app.SubtractionIndex = app.SubtractionIndex - 1;
@@ -3451,14 +3000,7 @@ end
                 msgbox('No subtraction actions to undo', 'Info', 'help');
             end
         end
-
-        function UndoDeletionButtonPushed(app, ~)
-            app.undoLastDeletion();
-        end
-
-        function UndoSubtractionButtonPushed(app, ~)
-            app.undoLastSubtraction();
-        end       
+       
     end
 
     %% Dara Previewing %%
@@ -3503,7 +3045,7 @@ end
                     error('TIMESTAMP column is missing.');
                 end
         
-                app.DOY = tempFilteredData.DOY;
+                app.setDOY(data);
                 app.temperature = tempFilteredData.AirTC_Avg;
                 app.humidity = tempFilteredData.RH;
                 app.par = tempFilteredData.PAR_Den_Avg;
@@ -3530,8 +3072,10 @@ end
                 % Handle error if the file cannot be read as a table
                 msgbox(sprintf('Error reading the data file: %s', ME.message), 'Error', 'error');
                 app.TextArea2.Value = [app.TextArea2.Value; {['Error reading the data file: ', ME.message]}];
+                scroll(app.TextArea2, "bottom");
             end
         end
+
 
         function identifyColumns(app, data)
             colNames = data.Properties.VariableNames;
@@ -3722,6 +3266,7 @@ end
                 disp(errorMessage);
                 msgbox(errorMessage, 'Error', 'error');
                 app.TextArea2.Value = [app.TextArea2.Value; {errorMessage}];
+                scroll(app.TextArea2, "bottom");
             end
         end
     
@@ -3752,14 +3297,6 @@ end
             end
             app.loadSensorsTree();
             app.loadEnvironmentalVariablesTree();
-        end
-
-        function DeletedTdataButtonPushed(app, ~)
-            app.deleteSelectedPoints();
-        end
-
-        function ReversedataButtonPushed(app, ~)
-            app.inverseSelectedPoints();
         end
 
         % Method to update the visual representation of the zoom area in UIAxes3
@@ -3897,11 +3434,6 @@ end
             % Save the updated data back to the MAT file
             save(filePath, '-struct', 'dataStruct', '-v7.3');  % Use '-v7.3' for large files
         end
-    
-        function SaveDataButtonPushed(app, ~)
-            app.saveEditedData();
-            app.exportCurrentK();
-        end
 
         function saveEditedDataAndUpdateUI(app)
             % Start a timer to measure the duration of the save operation
@@ -3953,37 +3485,6 @@ end
             end
         end
         
-        function FinishEditingButtonPushed(app, ~)
-            % Prompt the user to choose between saving and replacing the original file or saving as a new file
-            choice = questdlg('Do you want to save and replace the original data file or save as a new file?', ...
-                              'Confirm Save', ...
-                              'Replace Original', 'Save As New File', 'Cancel', 'Cancel');
-            
-            % Handle the user's response
-            switch choice
-                case 'Replace Original'
-                    % Call the function to save edited data and update the UI
-                    app.saveEditedDataAndUpdateUI();
-                    
-                case 'Save As New File'
-                    % Prompt the user to specify a new file name and location
-                    [file, path] = uiputfile({'*.csv'; '*.xlsx'; '*.mat'}, 'Save As New File');
-                    if isequal(file, 0) || isequal(path, 0)
-                        % User canceled the save as new file operation
-                        msgbox('Save operation canceled.', 'Canceled');
-                    else
-                        % Update the DataFilePath property to the new file path
-                        app.DataFilePath = fullfile(path, file);
-                        
-                        % Save the data to the new file and update the UI
-                        app.saveEditedDataAndUpdateUI();
-                    end
-                    
-                case 'Cancel'
-                    % User canceled the operation
-                    msgbox('Operation canceled.', 'Canceled');
-            end
-        end
         
         function saveDataToCSV(~, filePath, modifiedData)
             % Read the original data
@@ -4136,7 +3637,8 @@ end
         function saveProject(app, ~, ~)
             [file, path] = uiputfile('*.html', 'Save Project As');
             if isequal(file, 0)
-                app.TextArea2.Value = [app.TextArea2.Value; {'User selected Cancel'}];
+                app.OutputTextArea.Value = [app.OutputTextArea.Value; {'User selected Cancel'}];
+                scroll(app.OutputTextArea, "bottom");
             else
                 projectData = struct();
                 projectData.DataFilePath = app.DataFilePath;
@@ -4155,7 +3657,6 @@ end
                 projectData.VPDTime = app.VPDTime;
                 projectData.VPDThreshold = app.VPDThreshold;
                 projectData.EditedData = app.UITable4.Data; % Include edited data
-                
                 % Include the deletion and subtraction histories
                 projectData.DeletionHistory = app.DeletionHistory;
                 projectData.DeletionIndex = app.DeletionIndex;
@@ -4170,7 +3671,8 @@ end
                 fprintf(fid, '<html><body><pre>%s</pre></body></html>', jsonData);
                 fclose(fid);
                 
-                app.TextArea2.Value = [app.TextArea2.Value; {['Project saved to: ', fullfile(path, file)]}];
+                app.OutputTextArea.Value = [app.OutputTextArea.Value; {['Project saved to: ', fullfile(path, file)]}];
+                scroll(app.OutputTextArea, "bottom");
             end
         end
 
@@ -4178,14 +3680,16 @@ end
         function loadProject2(app, projectFilePath)
             % Check if the project file exists
             if ~isfile(projectFilePath)
-                app.TextArea2.Value = [app.TextArea2.Value; {'The selected project file does not exist. Please select a valid project file.'}];
+                app.OutputTextArea.Value = [app.OutputTextArea.Value; {'The selected project file does not exist. Please select a valid project file.'}];
+                scroll(app.OutputTextArea, "bottom");
                 return;
             end
     
             % Read JSON data from HTML file
             fid = fopen(projectFilePath, 'r');
             if fid == -1
-                app.TextArea2.Value = [app.TextArea2.Value; {'Cannot open HTML file'}];
+                app.OutputTextArea.Value = [app.OutputTextArea.Value; {'Cannot open HTML file'}];
+                scroll(app.OutputTextArea, "bottom");
                 return;
             end
             raw = fread(fid, inf);
@@ -4200,7 +3704,8 @@ end
             requiredFields = {'DataFilePath', 'ProjectFilePath', 'TimeStepIncrement', 'MinSapFlow', 'MaxSapFlow', 'MaxChangePerInterval', 'DeleteDataPointsLessThan', 'PARThreshold', 'VPDTime', 'VPDThreshold', 'EditedData'};
             for i = 1:length(requiredFields)
                 if ~isfield(projectData, requiredFields{i})
-                    app.TextArea2.Value = [app.TextArea2.Value; {['Missing field ', requiredFields{i}, ' in project data']}];
+                    app.OutputTextArea.Value = [app.OutputTextArea.Value; {['Missing field ', requiredFields{i}, ' in project data']}];
+                    scroll(app.OutputTextArea, "bottom");
                     return;
                 end
             end
@@ -4244,225 +3749,117 @@ end
             % Plot the loaded data
             app.plotData();
     
-            app.TextArea2.Value = [app.TextArea2.Value; {['Project loaded from: ', app.ProjectFilePath]}];
+            app.OutputTextArea.Value = [app.OutputTextArea.Value; {['Project loaded from: ', app.ProjectFilePath]}];
+            scroll(app.OutputTextArea, "bottom");
+        end  
+
+        % Function to open a project directly by passing the saved project path
+        function openSavedProject(app, projectFilePath)
+        
+            % Check if the project file exists
+            if ~isfile(projectFilePath)
+                app.OutputTextArea.Value = [app.OutputTextArea.Value; {'The selected project file does not exist. Please select a valid project file.'}];
+                scroll(app.OutputTextArea, "bottom");
+                return;
+            end
+            
+            % Read JSON data from HTML file
+            fid = fopen(projectFilePath, 'r');
+            if fid == -1
+                app.OutputTextArea.Value = [app.OutputTextArea.Value; {'Cannot open HTML file'}];
+                scroll(app.OutputTextArea, "bottom");
+                return;
+            end
+            raw = fread(fid, inf);
+            str = char(raw');
+            fclose(fid);
+            
+            % Extract JSON data from HTML file
+            jsonData = extractBetween(str, '<pre>', '</pre>');
+            projectData = jsondecode(jsonData{1});
+            
+            % Check if all required fields are present in the project data
+            requiredFields = {'DataFilePath', 'ProjectFilePath', 'TimeStepIncrement', 'MinSapFlow', 'MaxSapFlow', 'MaxChangePerInterval', 'DeleteDataPointsLessThan', 'PARThreshold', 'VPDTime', 'VPDThreshold'};
+            for i = 1:length(requiredFields)
+                if ~isfield(projectData, requiredFields{i})
+                    app.OutputTextArea.Value = [app.OutputTextArea.Value; {['Missing field ', requiredFields{i}, ' in project data']}];
+                    scroll(app.OutputTextArea, "bottom");
+                    return;
+                end
+            end
+            
+            % Restore project data
+            app.DataFilePath = projectData.DataFilePath;
+            app.ProjectFilePath = projectData.ProjectFilePath;
+            app.TimeStepIncrement = projectData.TimeStepIncrement;
+            app.MinSapFlow = projectData.MinSapFlow;
+            app.MaxSapFlow = projectData.MaxSapFlow;
+            app.MaxChangePerInterval = projectData.MaxChangePerInterval;
+            app.DeleteDataPointsLessThan = projectData.DeleteDataPointsLessThan;
+            app.PARThreshold = projectData.PARThreshold;
+            app.VPDTime = projectData.VPDTime;
+            app.VPDThreshold = projectData.VPDThreshold;
+            
+            % Update UI fields with loaded data
+            app.DataFilePathEditField.Value = app.DataFilePath;
+            app.ProjectFilePathEditField.Value = app.ProjectFilePath;
+            app.TimeStepIncrementsminEditField.Value = app.TimeStepIncrement;
+            app.MinSapFlowEditField.Value = app.MinSapFlow;
+            app.MaxSapFlowEditField.Value = app.MaxSapFlow;
+            app.MaxChangePerIntervalEditField.Value = app.MaxChangePerInterval;
+            app.DeleteDataPointsLessThanEditField.Value = app.DeleteDataPointsLessThan;
+            app.PARThresholdEditField.Value = app.PARThreshold;
+            app.VPDTimehEditField.Value = app.VPDTime;
+            app.VPDThresholdEditField.Value = app.VPDThreshold;
+            
+            % Check if ProjectName is defined in the project
+            if isfield(projectData, 'ProjectName')
+                app.ProjectName = projectData.ProjectName;
+            else
+                [~, name, ~] = fileparts(app.ProjectFilePath);
+                app.ProjectName = name;
+            end
+            app.ProjectNameEditField.Value = app.ProjectName;
+            
+            % Check if DataFilePath is defined in the project
+            if isempty(app.DataFilePath)
+                [file, path] = uigetfile('*.*', 'Select Data File');
+                if isequal(file, 0)
+                    app.OutputTextArea.Value = [app.OutputTextArea.Value; {'Please define the data path before proceeding.'}];
+                    scroll(app.OutputTextArea, "bottom");
+                    return;
+                else
+                    app.DataFilePath = fullfile(path, file);
+                    app.DataFilePathEditField.Value = app.DataFilePath;
+                    previewData(app);
+                end
+            else
+                previewData(app);
+            end
+            
+            app.OutputTextArea.Value = [app.OutputTextArea.Value; {['Project loaded from: ', app.ProjectFilePath]}];
+            scroll(app.OutputTextArea, "bottom");
+        
         end
 
-        % Callback for Plot Data Button
-        function PlotDataButtonPushed(app, ~)
-            app.plotData();
-        end   
     end
 
 %% Project Page configuration %%
     methods (Access = public)
 
-        function DataPathButtonPushed(app, ~)
-            [file, path] = uigetfile({'*.csv;*.xlsx', 'CSV and Excel Files'; '*.*', 'All Files'}, 'Select Data File');
-            if isequal(file, 0)
-                % User canceled the action
-                return;
-            else
-                app.DataFilePath = fullfile(path, file);
-                app.DataFilePathEditField.Value = app.DataFilePath;
-            end
-            
-            % Load data from the file and preview it in the UITable
-            previewData(app);
-        end
-
-        % Callback for Project Path button
-        function ProjectPathButtonPushed(app, ~)
-            [file, path] = uigetfile('*.html', 'Select Project File');
-            if isequal(file, 0)
-                % User canceled the action
-                return;
-            else
-                app.ProjectFilePath = fullfile(path, file);
-                app.ProjectFilePathEditField.Value = app.ProjectFilePath;
-                
-                % Extract the file name without extension to update ProjectName
-                [~, fileName, ~] = fileparts(file);
-                app.ProjectNameEditField.Value = fileName;
-            end
-        end
-    
-        function SaveAsProjectSButtonPushed(app, ~, ~)
-            % Check if DataFilePath is defined
-            if isempty(app.DataFilePathEditField.Value)
-                % Prompt the user to select the data path
-                [file, path] = uigetfile({'*.csv;*.xlsx', 'CSV and Excel Files'; '*.*', 'All Files'}, 'Select Data File');
-                if isequal(file, 0)
-                    app.OutputTextArea.Value = [app.OutputTextArea.Value; {'User canceled the data file selection.'}];
-                    return;
-                else
-                    app.DataFilePathEditField.Value = fullfile(path, file);
-                    app.DataFilePath = fullfile(path, file); % Update the DataFilePath property
-                    previewData(app);
-                end
-            end
-            
-            % Check if ProjectName is defined
-            if isempty(app.ProjectNameEditField.Value)
-                msgbox('Please provide a project name.', 'Error', 'error');
-                app.OutputTextArea.Value = [app.OutputTextArea.Value; {'Project name is not defined.'}];
-                return;
-            end
-        
-            % Use the project name as the default file name
-            defaultFileName = strcat(app.ProjectNameEditField.Value, '.html');
-            
-            % Prompt the user to specify a new file path for the project
-            [file, path] = uiputfile('*.html', 'Save Project As', defaultFileName);
-            if isequal(file, 0)
-                app.OutputTextArea.Value = [app.OutputTextArea.Value; {'User selected Cancel'}];
-                return;
-            else
-                app.ProjectFilePath = fullfile(path, file);
-            end
-        
-            % Update the project properties with current values
-            app.TimeStepIncrement = app.TimeStepIncrementsminEditField.Value;
-            app.MinSapFlow = app.MinSapFlowEditField.Value;
-            app.MaxSapFlow = app.MaxSapFlowEditField.Value;
-            app.MaxChangePerInterval = app.MaxChangePerIntervalEditField.Value;
-            app.DeleteDataPointsLessThan = app.DeleteDataPointsLessThanEditField.Value;
-            app.PARThreshold = app.PARThresholdEditField.Value;
-            app.VPDTime = app.VPDTimehEditField.Value;
-            app.VPDThreshold = app.VPDThresholdEditField.Value;
-        
-            % Create JSON data for project
-            projectData = struct();
-            projectData.DataFilePath = app.DataFilePathEditField.Value;
-            projectData.ProjectFilePath = app.ProjectFilePath;
-            projectData.ProjectName = app.ProjectNameEditField.Value;
-            projectData.TimeStepIncrement = app.TimeStepIncrement;
-            projectData.MinSapFlow = app.MinSapFlow;
-            projectData.MaxSapFlow = app.MaxSapFlow;
-            projectData.MaxChangePerInterval = app.MaxChangePerInterval;
-            projectData.DeleteDataPointsLessThan = app.DeleteDataPointsLessThan;
-            projectData.PARThreshold = app.PARThreshold;
-            projectData.VPDTime = app.VPDTime;
-            projectData.VPDThreshold = app.VPDThreshold;
-        
-            % Convert project data to JSON
-            jsonData = jsonencode(projectData);
-        
-            % Save JSON data to HTML file
-            fid = fopen(app.ProjectFilePath, 'w');
-            if fid == -1
-                error('Cannot create HTML file');
-            end
-            fprintf(fid, '<html><body><pre>%s</pre></body></html>', jsonData);
-            fclose(fid);
-        
-            app.OutputTextArea.Value = [app.OutputTextArea.Value; {['Project saved to: ', app.ProjectFilePath]}];
-        
-            % Extract the file name without extension to update ProjectName
-            [~, fileName, ~] = fileparts(file);
-            app.ProjectNameEditField.Value = fileName;
-        
-            % Notify the user that the project has been saved
-            msgbox(['Project saved to: ', app.ProjectFilePath], 'Project Saved', 'help');
-        end 
-
-
-        function CreateProjectButtonPushed(app, ~)
-            % Check if ProjectName is defined
-            if isempty(app.ProjectNameEditField.Value)
-                msgbox('Please provide a project name.', 'Error', 'error');
-                app.OutputTextArea.Value = [app.OutputTextArea.Value; {'Project name is not defined.'}];
-                return;
-            end
-            
-            % Ensure the project name is unique
-            if strcmp(app.ProjectNameEditField.Value, app.ProjectName)
-                msgbox('The project name must be different from the current loaded project.', 'Error', 'error');
-                app.OutputTextArea.Value = [app.OutputTextArea.Value; {'The project name must be different from the current loaded project.'}];
-                return;
-            end
-        
-            % Check if DataFilePath is defined
-            if isempty(app.DataFilePathEditField.Value)
-                % Prompt the user to select the data path
-                [file, path] = uigetfile({'*.csv;*.xlsx', 'CSV and Excel Files'; '*.*', 'All Files'}, 'Select Data File');
-                if isequal(file, 0)
-                    app.OutputTextArea.Value = [app.OutputTextArea.Value; {'User canceled the data file selection.'}];
-                    return;
-                else
-                    app.DataFilePathEditField.Value = fullfile(path, file);
-                    app.DataFilePath = fullfile(path, file); % Update the DataFilePath property
-                    previewData(app);
-                end
-            end
-            
-            % Use the project name to create a new project file
-            projectName = app.ProjectNameEditField.Value;
-            defaultFileName = strcat(projectName, '.html');
-            
-            % Prompt the user to specify a new file path for the project
-            [file, path] = uiputfile('*.html', 'Save Project As', defaultFileName);
-            if isequal(file, 0)
-                app.OutputTextArea.Value = [app.OutputTextArea.Value; {'User selected Cancel'}];
-                return;
-            else
-                app.ProjectFilePath = fullfile(path, file);
-            end
-            
-            % Set default values for configurations
-            app.TimeStepIncrement = 30; % Default value
-            app.MinSapFlow = 0; % Default value
-            app.MaxSapFlow = 1; % Default value
-            app.MaxChangePerInterval = 1.5; % Default value
-            app.DeleteDataPointsLessThan = 6; % Default value
-            app.PARThreshold = 50; % Default value
-            app.VPDTime = 24; % Default value
-            app.VPDThreshold = 2; % Default value
-            
-            % Create JSON data for project
-            projectData = struct();
-            projectData.DataFilePath = app.DataFilePathEditField.Value;
-            projectData.ProjectFilePath = app.ProjectFilePath;
-            projectData.ProjectName = projectName;
-            projectData.TimeStepIncrement = app.TimeStepIncrement;
-            projectData.MinSapFlow = app.MinSapFlow;
-            projectData.MaxSapFlow = app.MaxSapFlow;
-            projectData.MaxChangePerInterval = app.MaxChangePerInterval;
-            projectData.DeleteDataPointsLessThan = app.DeleteDataPointsLessThan;
-            projectData.PARThreshold = app.PARThreshold;
-            projectData.VPDTime = app.VPDTime;
-            projectData.VPDThreshold = app.VPDThreshold;
-            
-            % Convert project data to JSON
-            jsonData = jsonencode(projectData);
-            
-            % Save JSON data to HTML file
-            fid = fopen(app.ProjectFilePath, 'w');
-            if fid == -1
-                error('Cannot create HTML file');
-            end
-            fprintf(fid, '<html><body><pre>%s</pre></body></html>', jsonData);
-            fclose(fid);
-            
-            app.OutputTextArea.Value = [app.OutputTextArea.Value; {['Project created and saved to: ', app.ProjectFilePath]}];
-            
-            % Notify the user that the project has been created
-            msgbox(['Project created and saved to: ', app.ProjectFilePath], 'Project Created', 'help');
-        
-            % Load the newly created project into the current configuration
-            loadProject(app, app.ProjectFilePath);
-        end
-
         function loadProject(app, projectFilePath)
             % Check if the project file exists
             if ~isfile(projectFilePath)
-                app.TextArea2.Value = [app.TextArea2.Value; {'The selected project file does not exist. Please select a valid project file.'}];
+                app.OutputTextArea.Value = [app.OutputTextArea.Value; {'The selected project file does not exist. Please select a valid project file.'}];
+                scroll(app.OutputTextArea, "bottom");
                 return;
             end
         
             % Read JSON data from HTML file
             fid = fopen(projectFilePath, 'r');
             if fid == -1
-                app.TextArea2.Value = [app.TextArea2.Value; {'Cannot open HTML file'}];
+                app.OutputTextArea.Value = [app.OutputTextArea.Value; {'Cannot open HTML file'}];
+                scroll(app.OutputTextArea, "bottom");
                 return;
             end
             raw = fread(fid, inf);
@@ -4477,7 +3874,8 @@ end
             requiredFields = {'DataFilePath', 'ProjectFilePath', 'TimeStepIncrement', 'MinSapFlow', 'MaxSapFlow', 'MaxChangePerInterval', 'DeleteDataPointsLessThan', 'PARThreshold', 'VPDTime', 'VPDThreshold', 'CurrentXData', 'CurrentYData', 'History', 'HistoryIndex', 'DeletionHistory', 'DeletionIndex', 'SubtractionHistory', 'SubtractionIndex'};
             for i = 1:length(requiredFields)
                 if ~isfield(projectData, requiredFields{i})
-                    app.TextArea2.Value = [app.TextArea2.Value; {['Missing field ', requiredFields{i}, ' in project data']}];
+                    app.OutputTextArea.Value = [app.OutputTextArea.Value; {['Missing field ', requiredFields{i}, ' in project data']}];
+                    scroll(app.OutputTextArea, "bottom");
                     return;
                 end
             end
@@ -4532,151 +3930,8 @@ end
             app.plotData(true); % Pass true to maintain the current zoom level
             loadSensorsTree(app);
         
-            app.TextArea2.Value = [app.TextArea2.Value; {['Project loaded from: ', app.ProjectFilePath]}];
-        end
-
-        function OpenProjectButtonPushed(app, ~)
-            % Prompt the user to select the project file path if not defined or to select a new project file
-            [file, path] = uigetfile('*.html', 'Select Project File');
-            if isequal(file, 0)
-                % User canceled the action
-                app.OutputTextArea.Value = [app.OutputTextArea.Value; {'User selected Cancel'}];
-                return;
-            else
-                app.ProjectFilePath = fullfile(path, file);
-                app.ProjectFilePathEditField.Value = app.ProjectFilePath;
-            end
-            
-            % Check if the project file exists
-            if ~isfile(app.ProjectFilePath)
-                app.OutputTextArea.Value = [app.OutputTextArea.Value; {'The selected project file does not exist. Please select a valid project file.'}];
-                return;
-            end
-            
-            % Read JSON data from HTML file
-            fid = fopen(app.ProjectFilePath, 'r');
-            if fid == -1
-                app.OutputTextArea.Value = [app.OutputTextArea.Value; {'Cannot open HTML file'}];
-                return;
-            end
-            raw = fread(fid, inf);
-            str = char(raw');
-            fclose(fid);
-            
-            % Extract JSON data from HTML file
-            jsonData = extractBetween(str, '<pre>', '</pre>');
-            projectData = jsondecode(jsonData{1});
-            
-            % Check if all required fields are present in the project data
-            requiredFields = {'DataFilePath', 'ProjectFilePath', 'TimeStepIncrement', 'MinSapFlow', 'MaxSapFlow', 'MaxChangePerInterval', 'DeleteDataPointsLessThan', 'PARThreshold', 'VPDTime', 'VPDThreshold'};
-            for i = 1:length(requiredFields)
-                if ~isfield(projectData, requiredFields{i})
-                    app.OutputTextArea.Value = [app.OutputTextArea.Value; {['Missing field ', requiredFields{i}, ' in project data']}];
-                    return;
-                end
-            end
-            
-            % Restore project data
-            app.DataFilePath = projectData.DataFilePath;
-            app.ProjectFilePath = projectData.ProjectFilePath;
-            app.TimeStepIncrement = projectData.TimeStepIncrement;
-            app.MinSapFlow = projectData.MinSapFlow;
-            app.MaxSapFlow = projectData.MaxSapFlow;
-            app.MaxChangePerInterval = projectData.MaxChangePerInterval;
-            app.DeleteDataPointsLessThan = projectData.DeleteDataPointsLessThan;
-            app.PARThreshold = projectData.PARThreshold;
-            app.VPDTime = projectData.VPDTime;
-            app.VPDThreshold = projectData.VPDThreshold;
-            
-            % Update UI fields with loaded data
-            app.DataFilePathEditField.Value = app.DataFilePath;
-            app.ProjectFilePathEditField.Value = app.ProjectFilePath;
-            app.TimeStepIncrementsminEditField.Value = app.TimeStepIncrement;
-            app.MinSapFlowEditField.Value = app.MinSapFlow;
-            app.MaxSapFlowEditField.Value = app.MaxSapFlow;
-            app.MaxChangePerIntervalEditField.Value = app.MaxChangePerInterval;
-            app.DeleteDataPointsLessThanEditField.Value = app.DeleteDataPointsLessThan;
-            app.PARThresholdEditField.Value = app.PARThreshold;
-            app.VPDTimehEditField.Value = app.VPDTime;
-            app.VPDThresholdEditField.Value = app.VPDThreshold;
-            
-            % Check if ProjectName is defined in the project
-            if isfield(projectData, 'ProjectName')
-                app.ProjectName = projectData.ProjectName;
-            else
-                [~, name, ~] = fileparts(app.ProjectFilePath);
-                app.ProjectName = name;
-            end
-            app.ProjectNameEditField.Value = app.ProjectName;
-            
-            % Check if DataFilePath is defined in the project
-            if isempty(app.DataFilePath)
-                [file, path] = uigetfile('*.*', 'Select Data File');
-                if isequal(file, 0)
-                    app.OutputTextArea.Value = [app.OutputTextArea.Value; {'Please define the data path before proceeding.'}];
-                    return;
-                else
-                    app.DataFilePath = fullfile(path, file);
-                    app.DataFilePathEditField.Value = app.DataFilePath;
-                    previewData(app);
-                end
-            else
-                previewData(app);
-            end
-            
             app.OutputTextArea.Value = [app.OutputTextArea.Value; {['Project loaded from: ', app.ProjectFilePath]}];
-        end
-
-        function SaveProjectButtonPushed(app, ~, ~)
-            % Ensure all configurations, DataFilePath, and ProjectFilePath are defined
-            if isempty(app.DataFilePath)
-                app.OutputTextArea.Value = [app.OutputTextArea.Value; {'Data file path is not defined. Please set the data file path before saving the project.'}];
-                return;
-            end
-            if isempty(app.ProjectFilePath)
-                app.OutputTextArea.Value = [app.OutputTextArea.Value; {'Project file path is not defined. Please use Save As to define the project file path first.'}];
-                return;
-            end
-        
-            % Update the project properties with current values
-            app.TimeStepIncrement = app.TimeStepIncrementsminEditField.Value;
-            app.MinSapFlow = app.MinSapFlowEditField.Value;
-            app.MaxSapFlow = app.MaxSapFlowEditField.Value;
-            app.MaxChangePerInterval = app.MaxChangePerIntervalEditField.Value;
-            app.DeleteDataPointsLessThan = app.DeleteDataPointsLessThanEditField.Value;
-            app.PARThreshold = app.PARThresholdEditField.Value;
-            app.VPDTime = app.VPDTimehEditField.Value;
-            app.VPDThreshold = app.VPDThresholdEditField.Value;
-        
-            % Create JSON data for project
-            projectData = struct();
-            projectData.DataFilePath = app.DataFilePath;
-            projectData.ProjectFilePath = app.ProjectFilePath;
-            projectData.ProjectName = app.ProjectName;
-            projectData.TimeStepIncrement = app.TimeStepIncrement;
-            projectData.MinSapFlow = app.MinSapFlow;
-            projectData.MaxSapFlow = app.MaxSapFlow;
-            projectData.MaxChangePerInterval = app.MaxChangePerInterval;
-            projectData.DeleteDataPointsLessThan = app.DeleteDataPointsLessThan;
-            projectData.PARThreshold = app.PARThreshold;
-            projectData.VPDTime = app.VPDTime;
-            projectData.VPDThreshold = app.VPDThreshold;
-        
-            % Convert project data to JSON
-            jsonData = jsonencode(projectData);
-        
-            % Save JSON data to HTML file
-            fid = fopen(app.ProjectFilePath, 'w');
-            if fid == -1
-                error('Cannot create HTML file');
-            end
-            fprintf(fid, '<html><body><pre>%s</pre></body></html>', jsonData);
-            fclose(fid);
-        
-            app.OutputTextArea.Value = [app.OutputTextArea.Value; {['Project saved to: ', app.ProjectFilePath]}];
-        
-            % Preview the data file in the UITable
-            previewData(app);
+            scroll(app.OutputTextArea, "bottom");
         end
 
     end
@@ -4716,7 +3971,7 @@ end
                 '    Coweeta Hydrologic Laboratory'
                 ''
                 '    SapFlower was created to automate the preprocessing, data gap filling,'
-                '    and analyzing of sap flow data measured based on Heat Dissipation Probes.'
+                '    and analysis of sap flow data measured based on Heat Dissipation Probes.'
                 ''
                 '    Copyright (c) 2024 Jiaxin Wang'
                 '    Licensed under the MIT License'
@@ -4760,127 +4015,1113 @@ end
 
         % Button pushed function: DataPathButton
         function DataPathButtonPushed2(app, event)
-            app.DataPathButton.ButtonPushedFcn = createCallbackFcn(app, @DataPathButtonPushed, true);
+            [file, path] = uigetfile({'*.csv;*.xlsx', 'CSV and Excel Files'; '*.*', 'All Files'}, 'Select Data File');
+            if isequal(file, 0)
+                % User canceled the action
+                return;
+            else
+                app.DataFilePath = fullfile(path, file);
+                app.DataFilePathEditField.Value = app.DataFilePath;
+            end
+            
+            % Load data from the file and preview it in the UITable
+            % previewData(app);
+
         end
 
         % Button pushed function: ProjectPathButton
         function ProjectPathButtonPushed2(app, event)
-            app.ProjectPathButton.ButtonPushedFcn = createCallbackFcn(app, @ProjectPathButtonPushed, true);
+            [file, path] = uigetfile('*.html', 'Select Project File');
+            if isequal(file, 0)
+                % User canceled the action
+                return;
+            else
+                app.ProjectFilePath = fullfile(path, file);
+                app.ProjectFilePathEditField.Value = app.ProjectFilePath;
+                
+                % Extract the file name without extension to update ProjectName
+                [~, fileName, ~] = fileparts(file);
+                app.ProjectNameEditField.Value = fileName;
+            end
+
         end
 
         % Button pushed function: CreateProjectButton
         function CreateProjectButtonPushed2(app, event)
-            app.CreateProjectButton.ButtonPushedFcn = createCallbackFcn(app, @CreateProjectButtonPushed, true);
+            % Check if ProjectName is defined
+            if isempty(app.ProjectNameEditField.Value)
+                msgbox('Please provide a project name.', 'Error', 'error');
+                app.OutputTextArea.Value = [app.OutputTextArea.Value; {'Project name is not defined.'}];
+                scroll(app.OutputTextArea, "bottom");
+                return;
+            end
+            
+            % Ensure the project name is unique
+            if strcmp(app.ProjectNameEditField.Value, app.ProjectName)
+                msgbox('The project name must be different from the current loaded project.', 'Error', 'error');
+                app.OutputTextArea.Value = [app.OutputTextArea.Value; {'The project name must be different from the current loaded project.'}];
+                scroll(app.OutputTextArea, "bottom");
+                return;
+            end
+        
+            % Prompt the user to specify a new file path for the project
+            projectName = app.ProjectNameEditField.Value;
+            defaultFileName = strcat(projectName, '.html');
+            [file, path] = uiputfile('*.html', 'Save Project As', defaultFileName);
+            if isequal(file, 0)
+                app.OutputTextArea.Value = [app.OutputTextArea.Value; {'User selected Cancel'}];
+                scroll(app.OutputTextArea, "bottom");
+                return;
+            else
+                app.ProjectFilePath = fullfile(path, file);
+            end
+            
+            app.ProjectFilePathEditField.Value = app.ProjectFilePath;    
+        
+            % Capture user input for configurations from the UI
+            app.Config = struct();
+            app.Config.TimeStepIncrement = app.TimeStepIncrementsminEditField.Value; % Captured from user input
+            app.Config.MinSapFlow = app.MinSapFlowEditField.Value; % Captured from user input
+            app.Config.MaxSapFlow = app.MaxSapFlowEditField.Value; % Captured from user input
+            app.Config.MaxChangePerInterval = app.MaxChangePerIntervalEditField.Value; % Captured from user input
+            app.Config.DeleteDataPointsLessThan = app.DeleteDataPointsLessThanEditField.Value; % Captured from user input
+            app.Config.PARThreshold = app.PARThresholdEditField.Value; % Captured from user input
+            app.Config.VPDTime = app.VPDTimehEditField.Value; % Captured from user input
+            app.Config.VPDThreshold = app.VPDThresholdEditField.Value; % Captured from user input
+        
+            % Create project configuration data structure based on app.Config
+            projectData = struct();
+            projectData.ProjectName = projectName;
+            projectData.ProjectFilePath = app.ProjectFilePath;
+            projectData.TimeStepIncrement = app.Config.TimeStepIncrement;
+            projectData.MinSapFlow = app.Config.MinSapFlow;
+            projectData.MaxSapFlow = app.Config.MaxSapFlow;
+            projectData.MaxChangePerInterval = app.Config.MaxChangePerInterval;
+            projectData.DeleteDataPointsLessThan = app.Config.DeleteDataPointsLessThan;
+            projectData.PARThreshold = app.Config.PARThreshold;
+            projectData.VPDTime = app.Config.VPDTime;
+            projectData.VPDThreshold = app.Config.VPDThreshold;
+            projectData.DataFilePath = app.DataFilePathEditField.Value; % Initialize DataFilePath as empty for now
+        
+            % Save the project configuration to a JSON-formatted HTML file
+            jsonData = jsonencode(projectData);
+            fid = fopen(app.ProjectFilePath, 'w');
+            if fid == -1
+                error('Cannot create HTML file');
+            end
+            fprintf(fid, '<html><body><pre>%s</pre></body></html>', jsonData);
+            fclose(fid);
+        
+            % Notify the user that the project has been created
+            app.OutputTextArea.Value = [app.OutputTextArea.Value; {['Project created and saved to: ', app.ProjectFilePath]}];
+            scroll(app.OutputTextArea, "bottom");
+            msgbox(['Project created and saved to: ', app.ProjectFilePath], 'Project Created', 'help');
+        
+            % Automatically call the OpenProjectButtonPushed2 logic without asking the user to select the project
+            openSavedProject(app, app.ProjectFilePath);
         end
 
         % Button pushed function: OpenProjectButton
         function OpenProjectButtonPushed2(app, event)
-            app.OpenProjectButton.ButtonPushedFcn = createCallbackFcn(app, @OpenProjectButtonPushed, true);
+            % Prompt the user to select the project file path if not defined or to select a new project file
+            [file, path] = uigetfile('*.html', 'Select Project File');
+            if isequal(file, 0)
+                % User canceled the action
+                app.OutputTextArea.Value = [app.OutputTextArea.Value; {'User selected Cancel'}];
+                scroll(app.OutputTextArea, "bottom");
+                return;
+            else
+                app.ProjectFilePath = fullfile(path, file);
+                app.ProjectFilePathEditField.Value = app.ProjectFilePath;
+            end
+            
+            % Check if the project file exists
+            if ~isfile(app.ProjectFilePath)
+                app.OutputTextArea.Value = [app.OutputTextArea.Value; {'The selected project file does not exist. Please select a valid project file.'}];
+                scroll(app.OutputTextArea, "bottom");
+                return;
+            end
+            
+            % Read JSON data from HTML file
+            fid = fopen(app.ProjectFilePath, 'r');
+            if fid == -1
+                app.OutputTextArea.Value = [app.OutputTextArea.Value; {'Cannot open HTML file'}];
+                scroll(app.OutputTextArea, "bottom");
+                return;
+            end
+            raw = fread(fid, inf);
+            str = char(raw');
+            fclose(fid);
+            
+            % Extract JSON data from HTML file
+            jsonData = extractBetween(str, '<pre>', '</pre>');
+            projectData = jsondecode(jsonData{1});
+            
+            % Check if all required fields are present in the project data
+            requiredFields = {'DataFilePath', 'ProjectFilePath', 'TimeStepIncrement', 'MinSapFlow', 'MaxSapFlow', 'MaxChangePerInterval', 'DeleteDataPointsLessThan', 'PARThreshold', 'VPDTime', 'VPDThreshold'};
+            for i = 1:length(requiredFields)
+                if ~isfield(projectData, requiredFields{i})
+                    app.OutputTextArea.Value = [app.OutputTextArea.Value; {['Missing field ', requiredFields{i}, ' in project data']}];
+                    scroll(app.OutputTextArea, "bottom");
+                    return;
+                end
+            end
+            
+            % Restore project data
+            app.DataFilePath = projectData.DataFilePath;
+            app.ProjectFilePath = projectData.ProjectFilePath;
+            app.TimeStepIncrement = projectData.TimeStepIncrement;
+            app.MinSapFlow = projectData.MinSapFlow;
+            app.MaxSapFlow = projectData.MaxSapFlow;
+            app.MaxChangePerInterval = projectData.MaxChangePerInterval;
+            app.DeleteDataPointsLessThan = projectData.DeleteDataPointsLessThan;
+            app.PARThreshold = projectData.PARThreshold;
+            app.VPDTime = projectData.VPDTime;
+            app.VPDThreshold = projectData.VPDThreshold;
+            
+            % Update UI fields with loaded data
+            app.DataFilePathEditField.Value = app.DataFilePath;
+            app.ProjectFilePathEditField.Value = app.ProjectFilePath;
+            app.TimeStepIncrementsminEditField.Value = app.TimeStepIncrement;
+            app.MinSapFlowEditField.Value = app.MinSapFlow;
+            app.MaxSapFlowEditField.Value = app.MaxSapFlow;
+            app.MaxChangePerIntervalEditField.Value = app.MaxChangePerInterval;
+            app.DeleteDataPointsLessThanEditField.Value = app.DeleteDataPointsLessThan;
+            app.PARThresholdEditField.Value = app.PARThreshold;
+            app.VPDTimehEditField.Value = app.VPDTime;
+            app.VPDThresholdEditField.Value = app.VPDThreshold;
+            
+            % Check if ProjectName is defined in the project
+            if isfield(projectData, 'ProjectName')
+                app.ProjectName = projectData.ProjectName;
+            else
+                [~, name, ~] = fileparts(app.ProjectFilePath);
+                app.ProjectName = name;
+            end
+            app.ProjectNameEditField.Value = app.ProjectName;
+            
+            % Check if DataFilePath is defined in the project
+            if isempty(app.DataFilePath)
+                [file, path] = uigetfile('*.*', 'Select Data File');
+                if isequal(file, 0)
+                    app.OutputTextArea.Value = [app.OutputTextArea.Value; {'Please define the data path before proceeding.'}];
+                    scroll(app.OutputTextArea, "bottom");
+                    return;
+                else
+                    app.DataFilePath = fullfile(path, file);
+                    app.DataFilePathEditField.Value = app.DataFilePath;
+                    previewData(app);
+                end
+            else
+                previewData(app);
+            end
+            
+            app.OutputTextArea.Value = [app.OutputTextArea.Value; {['Project loaded from: ', app.ProjectFilePath]}];
+            scroll(app.OutputTextArea, "bottom");
+
         end
 
         % Button pushed function: SaveProjectButton
         function SaveProjectButtonPushed2(app, event)
-            app.SaveProjectButton.ButtonPushedFcn = createCallbackFcn(app, @SaveProjectButtonPushed, true);
+            % Check if DataFilePath is defined
+            if isempty(app.DataFilePathEditField.Value)
+                % Prompt the user to select the data path
+                [file, path] = uigetfile({'*.csv;*.xlsx', 'CSV and Excel Files'; '*.*', 'All Files'}, 'Select Data File');
+                if isequal(file, 0)
+                    app.OutputTextArea.Value = [app.OutputTextArea.Value; {'User canceled the data file selection.'}];
+                    scroll(app.OutputTextArea, "bottom");
+                    return;
+                else
+                    app.DataFilePathEditField.Value = fullfile(path, file);
+                    app.DataFilePath = fullfile(path, file); % Update the DataFilePath property
+                    previewData(app);
+                end
+            end
+            
+            % Check if ProjectName is defined
+            if isempty(app.ProjectNameEditField.Value)
+                msgbox('Please provide a project name.', 'Error', 'error');
+                app.OutputTextArea.Value = [app.OutputTextArea.Value; {'Project name is not defined.'}];
+                scroll(app.OutputTextArea, "bottom");
+                return;
+            end
+        
+            % Use the project name as the default file name
+            defaultFileName = strcat(app.ProjectNameEditField.Value, '.html');
+            
+            % Prompt the user to specify a new file path for the project
+            [file, path] = uiputfile('*.html', 'Save Project As', defaultFileName);
+            if isequal(file, 0)
+                app.OutputTextArea.Value = [app.OutputTextArea.Value; {'User selected Cancel'}];
+                scroll(app.OutputTextArea, "bottom");
+                return;
+            else
+                app.ProjectFilePath = fullfile(path, file);
+            end
+        
+            % Update the project properties with current values
+            app.TimeStepIncrement = app.TimeStepIncrementsminEditField.Value;
+            app.MinSapFlow = app.MinSapFlowEditField.Value;
+            app.MaxSapFlow = app.MaxSapFlowEditField.Value;
+            app.MaxChangePerInterval = app.MaxChangePerIntervalEditField.Value;
+            app.DeleteDataPointsLessThan = app.DeleteDataPointsLessThanEditField.Value;
+            app.PARThreshold = app.PARThresholdEditField.Value;
+            app.VPDTime = app.VPDTimehEditField.Value;
+            app.VPDThreshold = app.VPDThresholdEditField.Value;
+        
+            % Create JSON data for project
+            projectData = struct();
+            projectData.DataFilePath = app.DataFilePathEditField.Value;
+            projectData.ProjectFilePath = app.ProjectFilePath;
+            projectData.ProjectName = app.ProjectNameEditField.Value;
+            projectData.TimeStepIncrement = app.TimeStepIncrement;
+            projectData.MinSapFlow = app.MinSapFlow;
+            projectData.MaxSapFlow = app.MaxSapFlow;
+            projectData.MaxChangePerInterval = app.MaxChangePerInterval;
+            projectData.DeleteDataPointsLessThan = app.DeleteDataPointsLessThan;
+            projectData.PARThreshold = app.PARThreshold;
+            projectData.VPDTime = app.VPDTime;
+            projectData.VPDThreshold = app.VPDThreshold;
+        
+            % Convert project data to JSON
+            jsonData = jsonencode(projectData);
+        
+            % Save JSON data to HTML file
+            fid = fopen(app.ProjectFilePath, 'w');
+            if fid == -1
+                error('Cannot create HTML file');
+            end
+            fprintf(fid, '<html><body><pre>%s</pre></body></html>', jsonData);
+            fclose(fid);
+        
+            app.OutputTextArea.Value = [app.OutputTextArea.Value; {['Project saved to: ', app.ProjectFilePath]}];
+            scroll(app.OutputTextArea, "bottom");
+        
+            % Extract the file name without extension to update ProjectName
+            [~, fileName, ~] = fileparts(file);
+            app.ProjectNameEditField.Value = fileName;
+        
+            % Notify the user that the project has been saved
+            msgbox(['Project saved to: ', app.ProjectFilePath], 'Project Saved', 'help');
+
         end
 
         % Button pushed function: SaveAsProjectButton
         function SaveAsProjectButtonPushed(app, event)
-            app.SaveAsProjectButton.ButtonPushedFcn = createCallbackFcn(app, @SaveAsProjectSButtonPushed, true);
+            % Check if DataFilePath is defined
+            if isempty(app.DataFilePathEditField.Value)
+                % Prompt the user to select the data path
+                [file, path] = uigetfile({'*.csv;*.xlsx', 'CSV and Excel Files'; '*.*', 'All Files'}, 'Select Data File');
+                if isequal(file, 0)
+                    app.OutputTextArea.Value = [app.OutputTextArea.Value; {'User canceled the data file selection.'}];
+                    scroll(app.OutputTextArea, "bottom");
+                    return;
+                else
+                    app.DataFilePathEditField.Value = fullfile(path, file);
+                    app.DataFilePath = fullfile(path, file); % Update the DataFilePath property
+                    previewData(app);
+                end
+            end
+            
+            % Check if ProjectName is defined
+            if isempty(app.ProjectNameEditField.Value)
+                msgbox('Please provide a project name.', 'Error', 'error');
+                app.OutputTextArea.Value = [app.OutputTextArea.Value; {'Project name is not defined.'}];
+                scroll(app.OutputTextArea, "bottom");
+                return;
+            end
+        
+            % Use the project name as the default file name
+            defaultFileName = strcat(app.ProjectNameEditField.Value, '.html');
+            
+            % Prompt the user to specify a new file path for the project
+            [file, path] = uiputfile('*.html', 'Save Project As', defaultFileName);
+            if isequal(file, 0)
+                app.OutputTextArea.Value = [app.OutputTextArea.Value; {'User selected Cancel'}];
+                scroll(app.OutputTextArea, "bottom");
+                return;
+            else
+                app.ProjectFilePath = fullfile(path, file);
+            end
+        
+            % Update the project properties with current values
+            app.TimeStepIncrement = app.TimeStepIncrementsminEditField.Value;
+            app.MinSapFlow = app.MinSapFlowEditField.Value;
+            app.MaxSapFlow = app.MaxSapFlowEditField.Value;
+            app.MaxChangePerInterval = app.MaxChangePerIntervalEditField.Value;
+            app.DeleteDataPointsLessThan = app.DeleteDataPointsLessThanEditField.Value;
+            app.PARThreshold = app.PARThresholdEditField.Value;
+            app.VPDTime = app.VPDTimehEditField.Value;
+            app.VPDThreshold = app.VPDThresholdEditField.Value;
+        
+            % Create JSON data for project
+            projectData = struct();
+            projectData.DataFilePath = app.DataFilePathEditField.Value;
+            projectData.ProjectFilePath = app.ProjectFilePath;
+            projectData.ProjectName = app.ProjectNameEditField.Value;
+            projectData.TimeStepIncrement = app.TimeStepIncrement;
+            projectData.MinSapFlow = app.MinSapFlow;
+            projectData.MaxSapFlow = app.MaxSapFlow;
+            projectData.MaxChangePerInterval = app.MaxChangePerInterval;
+            projectData.DeleteDataPointsLessThan = app.DeleteDataPointsLessThan;
+            projectData.PARThreshold = app.PARThreshold;
+            projectData.VPDTime = app.VPDTime;
+            projectData.VPDThreshold = app.VPDThreshold;
+        
+            % Convert project data to JSON
+            jsonData = jsonencode(projectData);
+        
+            % Save JSON data to HTML file
+            fid = fopen(app.ProjectFilePath, 'w');
+            if fid == -1
+                error('Cannot create HTML file');
+            end
+            fprintf(fid, '<html><body><pre>%s</pre></body></html>', jsonData);
+            fclose(fid);
+        
+            app.OutputTextArea.Value = [app.OutputTextArea.Value; {['Project saved to: ', app.ProjectFilePath]}];
+            scroll(app.OutputTextArea, "bottom");
+        
+            % Extract the file name without extension to update ProjectName
+            [~, fileName, ~] = fileparts(file);
+            app.ProjectNameEditField.Value = fileName;
+        
+            % Notify the user that the project has been saved
+            msgbox(['Project saved to: ', app.ProjectFilePath], 'Project Saved', 'help');
+
         end
 
         % Button pushed function: PlotDataButton
         function PlotDataButtonPushed2(app, event)
-            app.PlotDataButton.ButtonPushedFcn = createCallbackFcn(app, @PlotDataButtonPushed, true);
+            plotData(app);
         end
 
         % Button pushed function: UndoDeletionButton
         function UndoDeletionButtonPushed2(app, event)
-            app.UndoDeletionButton.ButtonPushedFcn = createCallbackFcn(app, @UndoDeletionButtonPushed, true);
+            undoLastDeletion(app);
         end
 
-        % Button pushed function: ReverdataButton
-        function ReverdataButtonPushed2(app, event)
-            app.ReverdataButton.ButtonPushedFcn = createCallbackFcn(app, @ReversedataButtonPushed, true);
+        % Button pushed function: ReverseDataButton
+        function ReverseDataButtonPushed2(app, event)
+            inverseSelectedPoints(app);
         end
 
-        % Button pushed function: UndoReverButton
-        function UndoReverButtonPushed(app, event)
-            app.UndoReverButton.ButtonPushedFcn = createCallbackFcn(app, @UndoSubtractionButtonPushed, true);
+        % Button pushed function: UndoReverseButton
+        function UndoReverseButtonPushed(app, event)
+            undoLastSubstraction(app)
         end
 
         % Button pushed function: FinishEditingButton
         function FinishEditingButtonPushed2(app, event)
-            app.FinishEditingButton.ButtonPushedFcn = createCallbackFcn(app, @FinishEditingButtonPushed, true);
+            % Prompt the user to choose between saving and replacing the original file or saving as a new file
+            choice = questdlg('Do you want to save and replace the original data file or save as a new file?', ...
+                              'Confirm Save', ...
+                              'Replace Original', 'Save As New File', 'Cancel', 'Cancel');
+            
+            % Handle the user's response
+            switch choice
+                case 'Replace Original'
+                    % Call the function to save edited data and update the UI
+                    app.saveEditedDataAndUpdateUI();
+                    
+                case 'Save As New File'
+                    % Prompt the user to specify a new file name and location
+                    [file, path] = uiputfile({'*.csv'; '*.xlsx'; '*.mat'}, 'Save As New File');
+                    if isequal(file, 0) || isequal(path, 0)
+                        % User canceled the save as new file operation
+                        msgbox('Save operation canceled.', 'Canceled');
+                    else
+                        % Update the DataFilePath property to the new file path
+                        app.DataFilePath = fullfile(path, file);
+                        
+                        % Save the data to the new file and update the UI
+                        app.saveEditedDataAndUpdateUI();
+                    end
+                    
+                case 'Cancel'
+                    % User canceled the operation
+                    msgbox('Operation canceled.', 'Canceled');
+            end
+
         end
 
         % Button pushed function: SaveDataButton
         function SaveDataButtonPushed2(app, event)
-            app.SaveDataButton.ButtonPushedFcn = createCallbackFcn(app, @SaveDataButtonPushed, true);
+            saveEditedData(app);
+            exportCurrentK(app);
         end
 
         % Button pushed function: DeletedTdataButton
         function DeletedTdataButtonPushed2(app, event)
-            app.DeletedTdataButton.ButtonPushedFcn = createCallbackFcn(app, @DeletedTdataButtonPushed, true);
+            deleteSelectedPoints(app);
         end
 
         % Button pushed function: PreviousSensorButton
         function PreviousSensorButtonPushed2(app, event)
-            app.PreviousSensorButton.ButtonPushedFcn = createCallbackFcn(app, @PreviousSensorButtonPushed, true);
+            try
+                % Define the sap flow columns
+                yCols = app.SapFlowCols; 
+                % Get the current Y column selection
+                currentY = app.YDropDown.Value;
+                % Find the index of the current selection
+                currentIndex = find(strcmp(yCols, currentY), 1);
+    
+                % Check if the current index is valid
+                if isempty(currentIndex)
+                    nextIndex = 1; % Default to the first sensor if current index is invalid
+                else
+                    % Move to the previous sensor, with wrapping
+                    if currentIndex == 1
+                        nextIndex = length(yCols); % Wrap around to the last column
+                    else
+                        nextIndex = currentIndex - 1;
+                    end
+                end
+    
+                % Update the Y dropdown selection
+                app.YDropDown.Value = yCols{nextIndex};
+    
+                % Replot the data with the new Y selection
+                app.plotData(false); % Maintain current limits
+            catch ME
+                % Handle errors and provide feedback
+                errorMessage = sprintf('Error in PreviousSensorButtonPushed: %s', ME.message);
+                disp(errorMessage);
+                msgbox(errorMessage, 'Error', 'error');
+            end
+
         end
 
         % Button pushed function: NextSensorButton
         function NextSensorButtonPushed2(app, event)
-            app.NextSensorButton.ButtonPushedFcn = createCallbackFcn(app, @NextSensorButtonPushed, true);
+            try
+                % Define the sap flow columns
+                yCols = app.SapFlowCols;
+                % Get the current Y column selection
+                currentY = app.YDropDown.Value;
+                % Find the index of the current selection
+                currentIndex = find(strcmp(yCols, currentY), 1);
+    
+                % Check if the current index is valid
+                if isempty(currentIndex)
+                    previousIndex = 1; % Default to the first sensor if current index is invalid
+                else
+                    % Move to the next sensor, with wrapping
+                    if currentIndex == length(yCols)
+                        previousIndex = 1; % Wrap around to the first column
+                    else
+                        previousIndex = currentIndex + 1;
+                    end
+                end
+    
+                % Update the Y dropdown selection
+                app.YDropDown.Value = yCols{previousIndex};
+    
+                % Replot the data with the new Y selection
+                app.plotData(false); % Maintain current limits
+            catch ME
+                % Handle errors and provide feedback
+                errorMessage = sprintf('Error in NextSensorButtonPushed: %s', ME.message);
+                disp(errorMessage);
+                msgbox(errorMessage, 'Error', 'error');
+            end
+
         end
 
         % Button pushed function: autoClean
         function autoCleanButtonPushed(app, event)
-            app.autoClean.ButtonPushedFcn = createCallbackFcn(app, @autoCleanedSapflowButtonPushed, true);
+            plotExampleCleanedSapflow(app);
         end
 
         % Button pushed function: StartTrainingButton
         function StartTrainingButtonPushed2(app, event)
-            app.StartTrainingButton.ButtonPushedFcn = createCallbackFcn(app, @StartTrainingButtonPushed, true);
+            cleanAndTrainSapflowModel(app);
         end
 
         % Button pushed function: StartPredictingButton
         function StartPredictingButtonPushed(app, event)
-            app.StartPredictingButton.ButtonPushedFcn = createCallbackFcn(app, @PredictButtonPushed, true);
+            startPrediction(app);
         end
 
         % Button pushed function: OutputPathButton
         function OutputPathButtonPushed2(app, event)
-            app.OutputPathButton.ButtonPushedFcn = createCallbackFcn(app, @OutputPathButtonPushed, true);
+        % Open a dialog to select a folder
+        selectedPath = uigetdir();
+        
+        % Check if the user canceled the selection
+        if selectedPath == 0
+            % User canceled the dialog, you can handle it accordingly
+            disp('User canceled the path selection.');
+            return;
+        end
+        
+        % Set the selected path to the Output EditField
+        app.Output.Value = selectedPath;
+        
+        % Display the selected path in the TextArea or Console for confirmation
+        disp(['Selected Output Path: ', selectedPath]);
+        app.TextArea.Value = [app.TextArea.Value; {['Selected Output Path: ', selectedPath]}];
+        scroll(app.TextArea, "bottom");
         end
 
         % Button pushed function: RawDataButton
         function RawDataButtonPushed2(app, event)
-            app.RawDataButton.ButtonPushedFcn = createCallbackFcn(app, @RawDataButtonPushed, true);
+        try
+            % Get checked sensors from the tree
+            checkedNodes = app.Tree.CheckedNodes;
+            
+            % Filter out the top-level "Sensors" node if it's selected
+            validSensorNodes = checkedNodes(~strcmp({checkedNodes.Text}, 'Sensors'));
+            
+            % Ensure at least one valid sensor is selected
+            if isempty(validSensorNodes)
+                % Use msgbox or update TextArea with the message
+                msgbox('Please select at least one valid sensor.', 'No Sensor Selected', 'warn');
+                return;
+            end
+            
+            % Initialize variables to accumulate data
+            combinedRawData = table();
+            sensorNames = {}; % To store the names of the sensors being loaded
+            
+            % Iterate over each selected sensor and load the raw data
+            for i = 1:length(validSensorNodes)
+                sensorName = validSensorNodes(i).Text;
+                
+                % Load raw data for the current sensor
+                rawData = loadRawData(app, sensorName);
+                
+                % Rename the sensor data column to include the sensor name
+                rawData.Properties.VariableNames{2} = sensorName; % Assumes data is in the second column
+                
+                % Store the sensor name for later use
+                sensorNames{end+1} = sensorName;
+                
+                % Align data by TIMESTAMP and merge
+                if isempty(combinedRawData)
+                    combinedRawData = rawData;
+                else
+                    % Merge tables by TIMESTAMP, keeping all timestamps from both tables
+                    combinedRawData = outerjoin(combinedRawData, rawData, 'Keys', 'TIMESTAMP', ...
+                        'MergeKeys', true, 'Type', 'full', 'LeftVariables', 1:size(combinedRawData, 2), ...
+                        'RightVariables', sensorName);
+                end
+            end
+            
+            % Update UITable5 with the combined raw data
+            app.UITable5.Data = combinedRawData;
+            
+            % Set the column names in UITable5 to match the sensor names
+            combinedColumnNames = combinedRawData.Properties.VariableNames;
+            app.UITable5.ColumnName = combinedColumnNames;
+            
+            % Plot the raw data for each sensor on UIAxes6_4
+            cla(app.UIAxes6_4); % Clear existing plots
+            hold(app.UIAxes6_4, 'on');
+            
+            % Generate distinct colors for each sensor
+            colors = lines(length(sensorNames)); 
+            colorIndex = 1;
+            
+            for i = 1:length(sensorNames)
+                % Escape underscores to avoid subscripts in the legend
+                displayName = strrep(sensorNames{i}, '_', '\_');
+                % Use the actual sensor name to plot each sensor's data with a different color
+                sensorName = sensorNames{i};
+                plot(app.UIAxes6_4, combinedRawData.TIMESTAMP, combinedRawData{:, sensorName}, ...
+                    'DisplayName', displayName, 'Color', colors(colorIndex, :));
+                colorIndex = colorIndex + 1;
+            end
+            
+            hold(app.UIAxes6_4, 'off');
+            
+            % Set plot labels and title
+            xlabel(app.UIAxes6_4, 'Timestamp');
+            ylabel(app.UIAxes6_4, 'Raw Data');
+            title(app.UIAxes6_4, 'Raw Data for Selected Sensors');
+            legend(app.UIAxes6_4, 'show');
+            
+        catch ME
+            % Handle any unexpected errors
+            msgbox(sprintf('An error occurred, you need to check at least one sensor: %s', ME.message), 'Error', 'error');
+            app.TextArea_2.Value = [app.TextArea_2.Value; {sprintf('An error occurred while loading raw data: %s', ME.message)}];
+            scroll(app.TextArea_2, "bottom");
+            drawnow;
+        end
+
         end
 
         % Button pushed function: PredictedDataButton
         function PredictedDataButtonPushed2(app, event)
-            app.PredictedDataButton.ButtonPushedFcn = createCallbackFcn(app, @PredictedDataButtonPushed, true);
+        try
+            % Get checked sensors from the tree
+            checkedNodes = app.Tree.CheckedNodes;
+            
+            % Filter out the top-level "Sensors" node if it's selected
+            validSensorNodes = checkedNodes(~strcmp({checkedNodes.Text}, 'Sensors'));
+            
+            % Ensure at least one valid sensor is selected
+            if isempty(validSensorNodes)
+                % Use msgbox or update TextArea with the message
+                msgbox('Please select at least one valid sensor.', 'No Sensor Selected', 'warn');
+                return;
+            end
+            
+            % Initialize variables to accumulate data
+            combinedPredictedData = table();
+            sensorNames = {}; % To store the names of the sensors being loaded
+            modelOptionsPerSensor = cell(1, length(validSensorNodes));
+            
+            % Iterate over each selected sensor to load available model types
+            for i = 1:length(validSensorNodes)
+                sensorName = validSensorNodes(i).Text;
+                modelFiles = dir(fullfile(app.Output.Value, 'PredictedData', sprintf('Predicted_*_%s.csv', sensorName)));
+                
+                % Collect available model types for the sensor
+                modelTypes = cell(length(modelFiles), 1);
+                for j = 1:length(modelFiles)
+                    [~, name, ~] = fileparts(modelFiles(j).name);
+                    extractedType = extractBetween(name, 'Predicted_', sprintf('_%s', sensorName));
+                    if ~isempty(extractedType)
+                        modelTypes{j} = extractedType{1}; % Ensure it's a char array
+                    end
+                end
+                modelOptionsPerSensor{i} = unique(modelTypes(~cellfun('isempty', modelTypes)));
+            end
+            
+            % Ask the user to select the model type for each sensor
+            selectedModelTypes = cell(1, length(validSensorNodes));
+            for i = 1:length(validSensorNodes)
+                sensorName = validSensorNodes(i).Text;
+                modelOptions = modelOptionsPerSensor{i};
+                [indx, tf] = listdlg('PromptString', sprintf('Select model type for sensor %s:', sensorName), ...
+                                     'SelectionMode', 'single', ...
+                                     'ListString', modelOptions, ...
+                                     'ListSize', [260, 200]);  % Adjust the width and height
+                if tf
+                    selectedModelTypes{i} = modelOptions{indx};
+                else
+                    % If the user cancels the dialog, skip this sensor
+                    selectedModelTypes{i} = [];
+                end
+            end
+    
+            
+            % Iterate over each selected sensor to load the predicted data
+            for i = 1:length(validSensorNodes)
+                sensorName = validSensorNodes(i).Text;
+                selectedModelType = selectedModelTypes{i};
+                
+                if isempty(selectedModelType)
+                    continue; % Skip sensors with no model type selected
+                end
+                
+                % Load predicted data for the current sensor and model type
+                predictedData = loadPredictedData(app, sensorName, selectedModelType);
+                
+                % Dynamically find the column name for the predicted sapflow data
+                sapflowColumnName = predictedData.Properties.VariableNames{find(contains(predictedData.Properties.VariableNames, 'PredictedSapflow'), 1)};
+                
+                % Extract only the TIMESTAMP and PredictedSapflow columns
+                predictedData = predictedData(:, {'TIMESTAMP', sapflowColumnName});
+                
+                % Rename the PredictedSapflow column to include the sensor name and model type
+                renamedColumn = sprintf('%s_%s', sensorName, selectedModelType);
+                predictedData.Properties.VariableNames{2} = renamedColumn;
+                
+                % Store the sensor name for later use
+                sensorNames{end+1} = renamedColumn;
+                
+                % Merge predicted data based on TIMESTAMP, using the longest range
+                if isempty(combinedPredictedData)
+                    combinedPredictedData = predictedData;
+                else
+                    % Merge tables by TIMESTAMP, keeping all timestamps from both tables
+                    combinedPredictedData = outerjoin(combinedPredictedData, predictedData, 'Keys', 'TIMESTAMP', ...
+                        'MergeKeys', true, 'Type', 'full', 'LeftVariables', 1:size(combinedPredictedData, 2), ...
+                        'RightVariables', renamedColumn);
+                end
+            end
+            
+            % Update UITable5_2 with the combined predicted data
+            app.UITable5_2.Data = combinedPredictedData;
+            
+            % Set the column names in UITable5_2 to match the sensor names
+            combinedColumnNames = combinedPredictedData.Properties.VariableNames;
+            app.UITable5_2.ColumnName = combinedColumnNames;
+            
+            % Plot the predicted data for each sensor on UIAxes6_2
+            cla(app.UIAxes6_2); % Clear existing plots
+            hold(app.UIAxes6_2, 'on');
+            
+            % Generate distinct colors for each sensor
+            colors = lines(length(sensorNames)); 
+            colorIndex = 1;
+            
+            for i = 1:length(sensorNames)
+                % Escape underscores to avoid subscripts in the legend
+                displayName = strrep(sensorNames{i}, '_', '\_');
+                % Use the actual sensor name to plot each sensor's data with a different color
+                sensorName = sensorNames{i};
+                plot(app.UIAxes6_2, combinedPredictedData.TIMESTAMP, combinedPredictedData{:, sensorName}, ...
+                    'DisplayName', displayName, 'Color', colors(colorIndex, :));
+                colorIndex = colorIndex + 1;
+            end
+            
+            hold(app.UIAxes6_2, 'off');
+            
+            % Set plot labels and title
+            xlabel(app.UIAxes6_2, 'Timestamp');
+            ylabel(app.UIAxes6_2, 'Predicted Data');
+            title(app.UIAxes6_2, 'Predicted Data for Selected Sensors');
+            legend(app.UIAxes6_2, 'show');
+            
+        catch ME
+            % Handle any unexpected errors
+            msgbox(sprintf('An error occurred: %s', ME.message), 'Error', 'error');
+            app.TextArea_2.Value = [app.TextArea_2.Value; {sprintf('An error occurred while loading predicted data: %s', ME.message)}];
+            scroll(app.TextArea_2, "bottom");
+            drawnow;
         end
 
-        % Button pushed function: SaveGapFillButton
-        function SaveGapFillButtonPushed2(app, event)
-            app.SaveGapFillButton.ButtonPushedFcn = createCallbackFcn(app, @SaveGapFillButtonPushed, true);
         end
 
         % Button pushed function: GapFillButton
         function GapFillButtonPushed2(app, event)
-            app.GapFillButton.ButtonPushedFcn = createCallbackFcn(app, @GapFillButtonPushed, true);
+            try
+                % Get checked sensors from the tree
+                checkedNodes = app.Tree.CheckedNodes;
+        
+                % Filter out the top-level "Sensors" node if it's selected
+                validSensorNodes = checkedNodes(~strcmp({checkedNodes.Text}, 'Sensors'));
+        
+                % Ensure at least one valid sensor is selected
+                if isempty(validSensorNodes)
+                    msgbox('Please select at least one valid sensor.', 'No Sensor Selected', 'warn');
+                    return;
+                end
+        
+                % Ensure that a model type is selected from app.Tree_3
+                if isempty(app.Tree_3.CheckedNodes)
+                    msgbox('Please select a model type.', 'No Model Type Selected', 'warn');
+                    return;
+                end
+                modelType = app.Tree_3.CheckedNodes(1).Text; % Assuming only one model type is selected
+        
+                % Clear the existing plot and reset variables
+                cla(app.UIAxes6_3, 'reset'); % Clear the plot completely
+                legend(app.UIAxes6_3, 'off'); % Turn off the legend to reset it
+                combinedGapFilledData = table(); % Reinitialize the combined gap-filled data table
+                legendEntries = {}; % Reset legend entries
+                legendHandles = []; % Reset legend handles
+        
+                % Colors for plotting different sensors
+                colors = lines(length(validSensorNodes));
+        
+                % Get raw and predicted data from UITable5 and UITable5_2
+                rawData = app.UITable5.Data;
+                predictedData = app.UITable5_2.Data;
+        
+                % Use the correct TIMESTAMP column name from the raw data
+                timestampColNameRaw = 'TIMESTAMP';
+                timestampColNamePred = 'TIMESTAMP';
+        
+                % Iterate over each selected sensor
+                for i = 1:length(validSensorNodes)
+                    sensorName = validSensorNodes(i).Text;
+        
+                    % Construct the predicted sensor name based on the selected model type
+                    predictedSensorName = sprintf('%s_%s', sensorName, modelType);
+        
+                    % Ensure that the columns for the current sensor are available
+                    if ~ismember(sensorName, rawData.Properties.VariableNames) || ...
+                       ~ismember(predictedSensorName, predictedData.Properties.VariableNames)
+                        msgbox(sprintf('Data for sensor %s not found in raw or predicted data.', sensorName), ...
+                               'Data Not Found', 'warn');
+                        continue;
+                    end
+        
+                    % Extract the raw and predicted data for the current sensor
+                    rawSensorData = rawData(:, {timestampColNameRaw, sensorName});
+                    predictedSensorData = predictedData(:, {timestampColNamePred, predictedSensorName});
+        
+                    % Align the data by TIMESTAMP and fill gaps in raw data using predictions
+                    gapFilledData = rawSensorData;
+                    gapIdx = isnan(gapFilledData{:, 2});
+                    gapFilledData{gapIdx, 2} = predictedSensorData{gapIdx, 2};
+        
+                    % Merge the gap-filled data into combined data
+                    if isempty(combinedGapFilledData)
+                        combinedGapFilledData = gapFilledData;
+                    else
+                        combinedGapFilledData = outerjoin(combinedGapFilledData, gapFilledData, ...
+                                                          'Keys', timestampColNameRaw, ...
+                                                          'MergeKeys', true, 'Type', 'full', ...
+                                                          'LeftVariables', 1:size(combinedGapFilledData, 2), ...
+                                                          'RightVariables', sensorName);
+                    end
+        
+                    % Plot the raw data for the current sensor
+                    hold(app.UIAxes6_3, 'on');
+                    rawPlotHandle = plot(app.UIAxes6_3, rawSensorData{:, timestampColNameRaw}, rawSensorData{:, 2}, ...
+                        'Color', colors(i, :), 'LineStyle', '-', 'LineWidth', 1);
+        
+                    % Plot the gap-filled data, highlighting only the filled gaps without connecting lines
+                    filledIdx = find(gapIdx); % Indices where gaps were filled
+                    gapFilledPlotHandle = plot(app.UIAxes6_3, gapFilledData{filledIdx, timestampColNameRaw}, gapFilledData{filledIdx, 2}, ...
+                        'Color', colors(i, :), 'LineStyle', 'none', 'Marker', 'o', 'MarkerSize', 1);
+        
+                    % Add unique legend entries for each sensor's raw and gap-filled data
+                    legendHandles = [legendHandles, rawPlotHandle, gapFilledPlotHandle];
+                    legendEntries = [legendEntries, sprintf('%s Raw', strrep(sensorName, '_', '\_')), ...
+                                     sprintf('%s Gap-Filled', strrep(sensorName, '_', '\_'))];
+                end
+        
+                % Add TIMESTAMP, VPD, and PAR_Den_Avg columns to the gap-filled data
+                combinedGapFilledData.TIMESTAMP = rawData.TIMESTAMP;
+                if ismember('VPD', rawData.Properties.VariableNames)
+                    combinedGapFilledData.VPD = rawData.VPD;
+                end
+                if ismember('PAR_Den_Avg', rawData.Properties.VariableNames)
+                    combinedGapFilledData.PAR_Den_Avg = rawData.PAR_Den_Avg;
+                end
+        
+                % Set plot labels and title
+                xlabel(app.UIAxes6_3, 'Timestamp');
+                ylabel(app.UIAxes6_3, 'Data');
+                title(app.UIAxes6_3, 'Gap-Filled Data for Selected Sensors');
+                
+                % Set the legend with unique entries
+                legend(app.UIAxes6_3, legendHandles, legendEntries);
+                
+                hold(app.UIAxes6_3, 'off');
+        
+                % Save the gap-filled data if needed
+                app.GapFilledData = combinedGapFilledData;
+                saveGapFilledData(app, combinedGapFilledData, validSensorNodes, timestampColNameRaw);
+            catch ME
+                % Handle errors and display a message to the user
+                errordlg(sprintf('An error occurred: %s', ME.message), 'Error');
+                disp(['Error in GapFillButtonPushed: ', ME.message]);
+            end
+
         end
 
         % Button pushed function: ExportKvaluesButton
         function ExportKvaluesButtonPushed2(app, event)
-            app.ExportKvaluesButton.ButtonPushedFcn = createCallbackFcn(app, @ExportKvaluesButtonPushed, true);
+            exportKValuesAfterGapFill(app);
         end
 
         % Button pushed function: ExportFvaluesButton
         function ExportFvaluesButtonPushed2(app, event)
-            app.ExportFvaluesButton.ButtonPushedFcn = createCallbackFcn(app, @ExportFvaluesButtonPushed, true);
+            exportFValuesAfterGapFill(app);
+        end
+
+        % Menu selected function: CreateNewMenu
+        function CreateNewMenuSelected(app, event)
+                        % Check if ProjectName is defined
+            if isempty(app.ProjectNameEditField.Value)
+                msgbox('Please provide a project name.', 'Error', 'error');
+                app.OutputTextArea.Value = [app.OutputTextArea.Value; {'Project name is not defined.'}];
+                scroll(app.OutputTextArea, "bottom");
+                return;
+            end
+            
+            % Ensure the project name is unique
+            if strcmp(app.ProjectNameEditField.Value, app.ProjectName)
+                msgbox('The project name must be different from the current loaded project.', 'Error', 'error');
+                app.OutputTextArea.Value = [app.OutputTextArea.Value; {'The project name must be different from the current loaded project.'}];
+                scroll(app.OutputTextArea, "bottom");
+                return;
+            end
+        
+            % Check if DataFilePath is defined
+            if isempty(app.DataFilePathEditField.Value)
+                % Prompt the user to select the data path
+                [file, path] = uigetfile({'*.csv;*.xlsx', 'CSV and Excel Files'; '*.*', 'All Files'}, 'Select Data File');
+                if isequal(file, 0)
+                    app.OutputTextArea.Value = [app.OutputTextArea.Value; {'User canceled the data file selection.'}];
+                    scroll(app.OutputTextArea, "bottom");
+                    return;
+                else
+                    app.DataFilePathEditField.Value = fullfile(path, file);
+                    app.DataFilePath = fullfile(path, file); % Update the DataFilePath property
+                    previewData(app);
+                end
+            end
+            
+            % Use the project name to create a new project file
+            projectName = app.ProjectNameEditField.Value;
+            defaultFileName = strcat(projectName, '.html');
+            
+            % Prompt the user to specify a new file path for the project
+            [file, path] = uiputfile('*.html', 'Save Project As', defaultFileName);
+            if isequal(file, 0)
+                app.OutputTextArea.Value = [app.OutputTextArea.Value; {'User selected Cancel'}];
+                scroll(app.OutputTextArea, "bottom");
+                return;
+            else
+                app.ProjectFilePath = fullfile(path, file);
+            end
+            
+            % Set default values for configurations
+            app.TimeStepIncrement = 30; % Default value
+            app.MinSapFlow = 0; % Default value
+            app.MaxSapFlow = 1; % Default value
+            app.MaxChangePerInterval = 1.5; % Default value
+            app.DeleteDataPointsLessThan = 6; % Default value
+            app.PARThreshold = 50; % Default value
+            app.VPDTime = 24; % Default value
+            app.VPDThreshold = 2; % Default value
+            
+            % Create JSON data for project
+            projectData = struct();
+            projectData.DataFilePath = app.DataFilePathEditField.Value;
+            projectData.ProjectFilePath = app.ProjectFilePath;
+            projectData.ProjectName = projectName;
+            projectData.TimeStepIncrement = app.TimeStepIncrement;
+            projectData.MinSapFlow = app.MinSapFlow;
+            projectData.MaxSapFlow = app.MaxSapFlow;
+            projectData.MaxChangePerInterval = app.MaxChangePerInterval;
+            projectData.DeleteDataPointsLessThan = app.DeleteDataPointsLessThan;
+            projectData.PARThreshold = app.PARThreshold;
+            projectData.VPDTime = app.VPDTime;
+            projectData.VPDThreshold = app.VPDThreshold;
+            
+            % Convert project data to JSON
+            jsonData = jsonencode(projectData);
+            
+            % Save JSON data to HTML file
+            fid = fopen(app.ProjectFilePath, 'w');
+            if fid == -1
+                error('Cannot create HTML file');
+            end
+            fprintf(fid, '<html><body><pre>%s</pre></body></html>', jsonData);
+            fclose(fid);
+            
+            app.OutputTextArea.Value = [app.OutputTextArea.Value; {['Project created and saved to: ', app.ProjectFilePath]}];
+            scroll(app.OutputTextArea, "bottom");
+            
+            % Notify the user that the project has been created
+            msgbox(['Project created and saved to: ', app.ProjectFilePath], 'Project Created', 'help');
+        
+            % Load the newly created project into the current configuration
+            loadProject(app, app.ProjectFilePath);
+        end
+
+        % Menu selected function: OpenFileMenu
+        function OpenFileMenuSelected(app, event)
+            OpenProjectButtonPushed2(app);
+        end
+
+        % Menu selected function: SaveMenu
+        function SaveMenuSelected(app, event)
+            SaveProjectButtonPushed2(app);
+        end
+
+        % Menu selected function: ExportKMenu
+        function ExportKMenuSelected(app, event)
+
+                % Check if there is a plot on app.UIAxes6_4
+                if isempty(app.UIAxes6_4.Children)
+                    % No plot exists, do one thing
+                    msgbox('You have not finished gap-filling, exporting the current K only...', 'Gap-filling status');
+                    exportCurrentK(app);
+                    
+                else
+                    % A plot exists, do another thing
+                    msgbox('Exporting gap-filled K...', 'Gap-filling status');
+                    exportFValuesAfterGapFill(app);
+                end
+
+        end
+
+        % Menu selected function: ExitMenu
+        function ExitMenuSelected(app, event)
+            delete(app.SapFlowerUIFigure);
+        end
+
+        % Menu selected function: DeleteSelectedDataMenu
+        function DeleteSelectedDataMenuSelected(app, event)
+            deleteSelectedPoints(app);
+        end
+
+        % Menu selected function: ReverseSelectedDataMenu
+        function ReverseSelectedDataMenuSelected(app, event)
+            inverseSelectedPoints(app);
+        end
+
+        % Menu selected function: UndoMenu
+        function UndoMenuSelected(app, event)
+            if isempty(app.ActionHistory)
+                msgbox('No actions to undo');
+                return;
+            end
+            
+            % Get the last action from the history
+            lastAction = app.ActionHistory{end};
+            
+            % Remove the last action from the history
+            app.ActionHistory(end) = [];
+            
+            % Perform the undo based on the last action
+            switch lastAction
+                case 'delete'
+                    app.undoLastDeletion();
+                case 'inverse'
+                    app.undoLastSubstraction();
+                otherwise
+                    msgbox('Unknown action in history');
+            end
+        end
+
+        % Menu selected function: UndoAllMenu
+        function UndoAllMenuSelected(app, event)
+            if isempty(app.ActionHistory)
+                msgbox('No actions to undo');
+                return;
+            end
+        
+            % Undo each action, starting from the last one
+            while ~isempty(app.ActionHistory)
+                lastAction = app.ActionHistory{end};
+                app.ActionHistory(end) = [];
+                
+                % Perform the undo based on the last action
+                switch lastAction
+                    case 'delete'
+                        app.undoLastDeletion();
+                    case 'inverse'
+                        app.undoLastSubstraction();
+                    otherwise
+                        msgbox('Unknown action in history');
+                end
+            end
+        end
+
+        % Menu selected function: GapFillMenu
+        function GapFillMenuSelected(app, event)
+            app.gapFillAndPlotData();
+        end
+
+        % Menu selected function: HomePageMenu
+        function HomePageMenuSelected(app, event)
+            web('https://www.jiaxin-wang.com/', '-browser');
+        end
+
+        % Menu selected function: GitHubMenu
+        function GitHubMenuSelected(app, event)
+            web('https://github.com/JiaxinWang123/SapFlower/', '-browser')
+        end
+
+        % Menu selected function: LatestVersionMenu
+        function LatestVersionMenuSelected(app, event)
+            web('https://doi.org/10.5281/zenodo.13665919', '-browser')
+        end
+
+        % Menu selected function: TrainingOptionsMenu
+        function TrainingOptionsMenuSelected(app, event)
+            web('https://www.mathworks.com/help/deeplearning/ug/create-bilstm-function.html/','-browser')
         end
     end
 
@@ -4909,27 +5150,32 @@ end
 
             % Create CreateNewMenu
             app.CreateNewMenu = uimenu(app.FileMenu);
+            app.CreateNewMenu.MenuSelectedFcn = createCallbackFcn(app, @CreateNewMenuSelected, true);
             app.CreateNewMenu.Separator = 'on';
             app.CreateNewMenu.Accelerator = 'N';
             app.CreateNewMenu.Text = 'Create New';
 
             % Create OpenFileMenu
             app.OpenFileMenu = uimenu(app.FileMenu);
+            app.OpenFileMenu.MenuSelectedFcn = createCallbackFcn(app, @OpenFileMenuSelected, true);
             app.OpenFileMenu.Accelerator = 'O';
             app.OpenFileMenu.Text = 'Open File';
 
             % Create SaveMenu
             app.SaveMenu = uimenu(app.FileMenu);
+            app.SaveMenu.MenuSelectedFcn = createCallbackFcn(app, @SaveMenuSelected, true);
             app.SaveMenu.Accelerator = 'S';
             app.SaveMenu.Text = 'Save';
 
             % Create ExportKMenu
             app.ExportKMenu = uimenu(app.FileMenu);
+            app.ExportKMenu.MenuSelectedFcn = createCallbackFcn(app, @ExportKMenuSelected, true);
             app.ExportKMenu.Accelerator = 'K';
             app.ExportKMenu.Text = 'Export K';
 
             % Create ExitMenu
             app.ExitMenu = uimenu(app.FileMenu);
+            app.ExitMenu.MenuSelectedFcn = createCallbackFcn(app, @ExitMenuSelected, true);
             app.ExitMenu.Accelerator = 'Q';
             app.ExitMenu.Text = 'Exit';
 
@@ -4939,146 +5185,108 @@ end
 
             % Create CleanDataMenu
             app.CleanDataMenu = uimenu(app.EditMenu);
+            app.CleanDataMenu.Enable = 'off';
             app.CleanDataMenu.Text = 'CleanData';
 
             % Create SmoothdataMenu_2
             app.SmoothdataMenu_2 = uimenu(app.CleanDataMenu);
+            app.SmoothdataMenu_2.Enable = 'off';
             app.SmoothdataMenu_2.Text = 'Smooth data';
 
             % Create SimpleMovingAverageSMAMenu_2
             app.SimpleMovingAverageSMAMenu_2 = uimenu(app.SmoothdataMenu_2);
+            app.SimpleMovingAverageSMAMenu_2.Enable = 'off';
             app.SimpleMovingAverageSMAMenu_2.Text = 'Simple Moving Average (SMA)';
 
             % Create ExponentialMovingAverageEMAMenu_2
             app.ExponentialMovingAverageEMAMenu_2 = uimenu(app.SmoothdataMenu_2);
+            app.ExponentialMovingAverageEMAMenu_2.Enable = 'off';
             app.ExponentialMovingAverageEMAMenu_2.Text = 'Exponential Moving Average (EMA)';
 
             % Create KalmanFilterMenu_2
             app.KalmanFilterMenu_2 = uimenu(app.SmoothdataMenu_2);
+            app.KalmanFilterMenu_2.Enable = 'off';
             app.KalmanFilterMenu_2.Text = 'Kalman Filter';
 
             % Create SeasonalDecompositionofTimeSeriesSTLMenu_2
             app.SeasonalDecompositionofTimeSeriesSTLMenu_2 = uimenu(app.SmoothdataMenu_2);
+            app.SeasonalDecompositionofTimeSeriesSTLMenu_2.Enable = 'off';
             app.SeasonalDecompositionofTimeSeriesSTLMenu_2.Text = 'Seasonal Decomposition of Time Series (STL)';
 
             % Create GaussianProcessRegressionMenu_2
             app.GaussianProcessRegressionMenu_2 = uimenu(app.SmoothdataMenu_2);
+            app.GaussianProcessRegressionMenu_2.Enable = 'off';
             app.GaussianProcessRegressionMenu_2.Text = 'Gaussian Process Regression';
 
             % Create SavitzkyGolayFilterMenu_2
             app.SavitzkyGolayFilterMenu_2 = uimenu(app.SmoothdataMenu_2);
+            app.SavitzkyGolayFilterMenu_2.Enable = 'off';
             app.SavitzkyGolayFilterMenu_2.Text = 'Savitzky-Golay Filter';
 
             % Create WaveletTransformMenu_2
             app.WaveletTransformMenu_2 = uimenu(app.SmoothdataMenu_2);
+            app.WaveletTransformMenu_2.Enable = 'off';
             app.WaveletTransformMenu_2.Text = 'Wavelet Transform';
 
             % Create HiddenMarkovModelHMMMenu_2
             app.HiddenMarkovModelHMMMenu_2 = uimenu(app.SmoothdataMenu_2);
+            app.HiddenMarkovModelHMMMenu_2.Enable = 'off';
             app.HiddenMarkovModelHMMMenu_2.Text = 'Hidden Markov Model (HMM)';
 
             % Create IsolationForestMenu_2
             app.IsolationForestMenu_2 = uimenu(app.SmoothdataMenu_2);
+            app.IsolationForestMenu_2.Enable = 'off';
             app.IsolationForestMenu_2.Text = 'Isolation Forest';
 
             % Create RecurrentNeuralNetworksRNNsMenu_2
             app.RecurrentNeuralNetworksRNNsMenu_2 = uimenu(app.SmoothdataMenu_2);
+            app.RecurrentNeuralNetworksRNNsMenu_2.Enable = 'off';
             app.RecurrentNeuralNetworksRNNsMenu_2.Text = 'Recurrent Neural Networks (RNNs)';
 
             % Create DynamicTimeWarpingDTWMenu_2
             app.DynamicTimeWarpingDTWMenu_2 = uimenu(app.SmoothdataMenu_2);
+            app.DynamicTimeWarpingDTWMenu_2.Enable = 'off';
             app.DynamicTimeWarpingDTWMenu_2.Text = 'Dynamic Time Warping (DTW)';
 
             % Create QuantileRegressionMenu_2
             app.QuantileRegressionMenu_2 = uimenu(app.SmoothdataMenu_2);
+            app.QuantileRegressionMenu_2.Enable = 'off';
             app.QuantileRegressionMenu_2.Text = 'Quantile Regression';
 
             % Create BayesianFilteringMenu_2
             app.BayesianFilteringMenu_2 = uimenu(app.SmoothdataMenu_2);
+            app.BayesianFilteringMenu_2.Enable = 'off';
             app.BayesianFilteringMenu_2.Text = 'Bayesian Filtering';
 
             % Create GapFillMenu
             app.GapFillMenu = uimenu(app.EditMenu);
+            app.GapFillMenu.MenuSelectedFcn = createCallbackFcn(app, @GapFillMenuSelected, true);
+            app.GapFillMenu.Accelerator = 'G';
             app.GapFillMenu.Text = 'GapFill';
 
-            % Create LinearmodelsMenu
-            app.LinearmodelsMenu = uimenu(app.GapFillMenu);
-            app.LinearmodelsMenu.Text = 'Linear models';
+            % Create DeleteSelectedDataMenu
+            app.DeleteSelectedDataMenu = uimenu(app.EditMenu);
+            app.DeleteSelectedDataMenu.MenuSelectedFcn = createCallbackFcn(app, @DeleteSelectedDataMenuSelected, true);
+            app.DeleteSelectedDataMenu.Accelerator = 'D';
+            app.DeleteSelectedDataMenu.Text = 'DeleteSelectedData';
 
-            % Create SimplelinearmodelMenu
-            app.SimplelinearmodelMenu = uimenu(app.LinearmodelsMenu);
-            app.SimplelinearmodelMenu.Text = 'Simple linear model';
+            % Create ReverseSelectedDataMenu
+            app.ReverseSelectedDataMenu = uimenu(app.EditMenu);
+            app.ReverseSelectedDataMenu.MenuSelectedFcn = createCallbackFcn(app, @ReverseSelectedDataMenuSelected, true);
+            app.ReverseSelectedDataMenu.Accelerator = 'R';
+            app.ReverseSelectedDataMenu.Text = 'ReverseSelectedData';
 
-            % Create MultivariatelinearmodelMenu
-            app.MultivariatelinearmodelMenu = uimenu(app.LinearmodelsMenu);
-            app.MultivariatelinearmodelMenu.Text = 'Multivariate linear model';
+            % Create UndoMenu
+            app.UndoMenu = uimenu(app.EditMenu);
+            app.UndoMenu.MenuSelectedFcn = createCallbackFcn(app, @UndoMenuSelected, true);
+            app.UndoMenu.Accelerator = 'Z';
+            app.UndoMenu.Text = 'Undo';
 
-            % Create WeightedmultivariatelinearmodelMenu
-            app.WeightedmultivariatelinearmodelMenu = uimenu(app.LinearmodelsMenu);
-            app.WeightedmultivariatelinearmodelMenu.Text = 'Weighted multivariate linear model';
-
-            % Create NonlinearmodelsMenu
-            app.NonlinearmodelsMenu = uimenu(app.GapFillMenu);
-            app.NonlinearmodelsMenu.Text = 'Non-linear models';
-
-            % Create LSTMMenu
-            app.LSTMMenu = uimenu(app.NonlinearmodelsMenu);
-            app.LSTMMenu.Text = 'LSTM';
-
-            % Create BiLSTMMenu
-            app.BiLSTMMenu = uimenu(app.NonlinearmodelsMenu);
-            app.BiLSTMMenu.Text = 'BiLSTM';
-
-            % Create GaussianProcessesMenu
-            app.GaussianProcessesMenu = uimenu(app.NonlinearmodelsMenu);
-            app.GaussianProcessesMenu.Text = 'Gaussian Processes';
-
-            % Create KernelRegressionMenu
-            app.KernelRegressionMenu = uimenu(app.NonlinearmodelsMenu);
-            app.KernelRegressionMenu.Text = 'Kernel Regression';
-
-            % Create NonlinearAutoRegressiveModelwitheXogenousInputsNARXMenu
-            app.NonlinearAutoRegressiveModelwitheXogenousInputsNARXMenu = uimenu(app.NonlinearmodelsMenu);
-            app.NonlinearAutoRegressiveModelwitheXogenousInputsNARXMenu.Text = 'Nonlinear AutoRegressive Model with eXogenous Inputs (NARX)';
-
-            % Create SplineInterpolationMenu
-            app.SplineInterpolationMenu = uimenu(app.NonlinearmodelsMenu);
-            app.SplineInterpolationMenu.Text = 'Spline Interpolation';
-
-            % Create LOESSLocallyWeightedScatterplotSmoothingMenu
-            app.LOESSLocallyWeightedScatterplotSmoothingMenu = uimenu(app.NonlinearmodelsMenu);
-            app.LOESSLocallyWeightedScatterplotSmoothingMenu.Text = 'LOESS (Locally Weighted Scatterplot Smoothing)';
-
-            % Create ReverseDataMenu
-            app.ReverseDataMenu = uimenu(app.EditMenu);
-            app.ReverseDataMenu.Text = 'ReverseData';
-
-            % Create ReverseMenu
-            app.ReverseMenu = uimenu(app.ReverseDataMenu);
-            app.ReverseMenu.Text = 'Reverse';
-
-            % Create UndoreverseMenu
-            app.UndoreverseMenu = uimenu(app.ReverseDataMenu);
-            app.UndoreverseMenu.Text = 'Undo reverse';
-
-            % Create PlotMenu
-            app.PlotMenu = uimenu(app.SapFlowerUIFigure);
-            app.PlotMenu.Text = 'Plot';
-
-            % Create ExportMenu
-            app.ExportMenu = uimenu(app.PlotMenu);
-            app.ExportMenu.Accelerator = 'E';
-            app.ExportMenu.Text = 'Export';
-
-            % Create SaveasMenu
-            app.SaveasMenu = uimenu(app.PlotMenu);
-            app.SaveasMenu.Accelerator = 'S';
-            app.SaveasMenu.Text = 'Save as';
-
-            % Create FullScreenMenu
-            app.FullScreenMenu = uimenu(app.PlotMenu);
-            app.FullScreenMenu.Accelerator = 'F';
-            app.FullScreenMenu.Text = 'Full Screen';
+            % Create UndoAllMenu
+            app.UndoAllMenu = uimenu(app.EditMenu);
+            app.UndoAllMenu.MenuSelectedFcn = createCallbackFcn(app, @UndoAllMenuSelected, true);
+            app.UndoAllMenu.Accelerator = 'A';
+            app.UndoAllMenu.Text = 'UndoAll';
 
             % Create HelpMenu
             app.HelpMenu = uimenu(app.SapFlowerUIFigure);
@@ -5095,18 +5303,22 @@ end
 
             % Create HomePageMenu
             app.HomePageMenu = uimenu(app.HelpMenu);
+            app.HomePageMenu.MenuSelectedFcn = createCallbackFcn(app, @HomePageMenuSelected, true);
             app.HomePageMenu.Text = 'HomePage';
 
             % Create GitHubMenu
             app.GitHubMenu = uimenu(app.HelpMenu);
+            app.GitHubMenu.MenuSelectedFcn = createCallbackFcn(app, @GitHubMenuSelected, true);
             app.GitHubMenu.Text = 'GitHub';
 
             % Create LatestVersionMenu
             app.LatestVersionMenu = uimenu(app.HelpMenu);
+            app.LatestVersionMenu.MenuSelectedFcn = createCallbackFcn(app, @LatestVersionMenuSelected, true);
             app.LatestVersionMenu.Text = 'LatestVersion';
 
             % Create TrainingOptionsMenu
             app.TrainingOptionsMenu = uimenu(app.HelpMenu);
+            app.TrainingOptionsMenu.MenuSelectedFcn = createCallbackFcn(app, @TrainingOptionsMenuSelected, true);
             app.TrainingOptionsMenu.Text = 'TrainingOptions';
 
             % Create GridLayout
@@ -5367,24 +5579,24 @@ end
             app.GridLayout13.RowSpacing = 3.5;
             app.GridLayout13.Padding = [1.5454531582919 3.5 1.5454531582919 3.5];
 
-            % Create UIAxes3
-            app.UIAxes3 = uiaxes(app.GridLayout13);
-            xlabel(app.UIAxes3, 'Time')
-            ylabel(app.UIAxes3, 'dT Overview')
-            zlabel(app.UIAxes3, 'Z')
-            app.UIAxes3.TickLength = [0.006 0.025];
-            app.UIAxes3.GridLineWidth = 0.25;
-            app.UIAxes3.MinorGridLineWidth = 0.25;
-            app.UIAxes3.GridLineStyle = '-.';
-            app.UIAxes3.XColor = [0 0 0];
-            app.UIAxes3.YColor = [0 0 0];
-            app.UIAxes3.ZColor = [0 0 0];
-            app.UIAxes3.LineWidth = 0.25;
-            app.UIAxes3.Box = 'on';
-            app.UIAxes3.XGrid = 'on';
-            app.UIAxes3.YGrid = 'on';
-            app.UIAxes3.Layout.Row = 3;
-            app.UIAxes3.Layout.Column = [1 8];
+            % Create UIAxes5
+            app.UIAxes5 = uiaxes(app.GridLayout13);
+            xlabel(app.UIAxes5, 'Time')
+            ylabel(app.UIAxes5, 'K detail')
+            zlabel(app.UIAxes5, 'Z')
+            app.UIAxes5.TickLength = [0.006 0.025];
+            app.UIAxes5.GridLineStyle = '-.';
+            app.UIAxes5.XColor = [0 0 0];
+            app.UIAxes5.XTick = [0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1];
+            app.UIAxes5.YColor = [0 0 0];
+            app.UIAxes5.YTick = [0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1];
+            app.UIAxes5.ZColor = [0 0 0];
+            app.UIAxes5.LineWidth = 0.25;
+            app.UIAxes5.Box = 'on';
+            app.UIAxes5.XGrid = 'on';
+            app.UIAxes5.YGrid = 'on';
+            app.UIAxes5.Layout.Row = 3;
+            app.UIAxes5.Layout.Column = [9 21];
 
             % Create UIAxes4
             app.UIAxes4 = uiaxes(app.GridLayout13);
@@ -5406,24 +5618,24 @@ end
             app.UIAxes4.Layout.Column = [1 21];
             app.UIAxes4.PickableParts = 'all';
 
-            % Create UIAxes5
-            app.UIAxes5 = uiaxes(app.GridLayout13);
-            xlabel(app.UIAxes5, 'Time')
-            ylabel(app.UIAxes5, 'K detail')
-            zlabel(app.UIAxes5, 'Z')
-            app.UIAxes5.TickLength = [0.006 0.025];
-            app.UIAxes5.GridLineStyle = '-.';
-            app.UIAxes5.XColor = [0 0 0];
-            app.UIAxes5.XTick = [0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1];
-            app.UIAxes5.YColor = [0 0 0];
-            app.UIAxes5.YTick = [0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1];
-            app.UIAxes5.ZColor = [0 0 0];
-            app.UIAxes5.LineWidth = 0.25;
-            app.UIAxes5.Box = 'on';
-            app.UIAxes5.XGrid = 'on';
-            app.UIAxes5.YGrid = 'on';
-            app.UIAxes5.Layout.Row = 3;
-            app.UIAxes5.Layout.Column = [9 21];
+            % Create UIAxes3
+            app.UIAxes3 = uiaxes(app.GridLayout13);
+            xlabel(app.UIAxes3, 'Time')
+            ylabel(app.UIAxes3, 'dT Overview')
+            zlabel(app.UIAxes3, 'Z')
+            app.UIAxes3.TickLength = [0.006 0.025];
+            app.UIAxes3.GridLineWidth = 0.25;
+            app.UIAxes3.MinorGridLineWidth = 0.25;
+            app.UIAxes3.GridLineStyle = '-.';
+            app.UIAxes3.XColor = [0 0 0];
+            app.UIAxes3.YColor = [0 0 0];
+            app.UIAxes3.ZColor = [0 0 0];
+            app.UIAxes3.LineWidth = 0.25;
+            app.UIAxes3.Box = 'on';
+            app.UIAxes3.XGrid = 'on';
+            app.UIAxes3.YGrid = 'on';
+            app.UIAxes3.Layout.Row = 3;
+            app.UIAxes3.Layout.Column = [1 8];
 
             % Create DeletedTdataButton
             app.DeletedTdataButton = uibutton(app.GridLayout13, 'push');
@@ -5483,23 +5695,23 @@ end
             app.PlotDataButton.Layout.Column = 16;
             app.PlotDataButton.Text = 'Plot Data';
 
-            % Create ReverdataButton
-            app.ReverdataButton = uibutton(app.GridLayout13, 'push');
-            app.ReverdataButton.ButtonPushedFcn = createCallbackFcn(app, @ReverdataButtonPushed2, true);
-            app.ReverdataButton.BackgroundColor = [0.6353 0.6588 0.4431];
-            app.ReverdataButton.FontColor = [1 1 1];
-            app.ReverdataButton.Layout.Row = 4;
-            app.ReverdataButton.Layout.Column = [5 6];
-            app.ReverdataButton.Text = 'Rever data';
+            % Create ReverseDataButton
+            app.ReverseDataButton = uibutton(app.GridLayout13, 'push');
+            app.ReverseDataButton.ButtonPushedFcn = createCallbackFcn(app, @ReverseDataButtonPushed2, true);
+            app.ReverseDataButton.BackgroundColor = [0.6353 0.6588 0.4431];
+            app.ReverseDataButton.FontColor = [1 1 1];
+            app.ReverseDataButton.Layout.Row = 4;
+            app.ReverseDataButton.Layout.Column = [5 6];
+            app.ReverseDataButton.Text = 'ReverseData';
 
-            % Create UndoReverButton
-            app.UndoReverButton = uibutton(app.GridLayout13, 'push');
-            app.UndoReverButton.ButtonPushedFcn = createCallbackFcn(app, @UndoReverButtonPushed, true);
-            app.UndoReverButton.BackgroundColor = [0.4667 0.6745 0.1882];
-            app.UndoReverButton.FontColor = [1 1 1];
-            app.UndoReverButton.Layout.Row = 5;
-            app.UndoReverButton.Layout.Column = [5 6];
-            app.UndoReverButton.Text = 'Undo Rever';
+            % Create UndoReverseButton
+            app.UndoReverseButton = uibutton(app.GridLayout13, 'push');
+            app.UndoReverseButton.ButtonPushedFcn = createCallbackFcn(app, @UndoReverseButtonPushed, true);
+            app.UndoReverseButton.BackgroundColor = [0.4667 0.6745 0.1882];
+            app.UndoReverseButton.FontColor = [1 1 1];
+            app.UndoReverseButton.Layout.Row = 5;
+            app.UndoReverseButton.Layout.Column = [5 6];
+            app.UndoReverseButton.Text = 'UndoReverse';
 
             % Create SaveDataButton
             app.SaveDataButton = uibutton(app.GridLayout13, 'push');
@@ -5626,6 +5838,10 @@ end
             % Create BiLSTMNode
             app.BiLSTMNode = uitreenode(app.RecurrentNeuralNetworksNode);
             app.BiLSTMNode.Text = 'BiLSTM';
+
+            % Create RandomForestNode
+            app.RandomForestNode = uitreenode(app.Tree_3);
+            app.RandomForestNode.Text = 'Random Forest';
 
             % Assign Checked Nodes
             app.Tree_3.CheckedNodes = [app.BiLSTMNode];
@@ -5764,7 +5980,7 @@ end
             app.EpochForTrainingEditField.Limits = [1 99999];
             app.EpochForTrainingEditField.Layout.Row = 10;
             app.EpochForTrainingEditField.Layout.Column = 2;
-            app.EpochForTrainingEditField.Value = 10;
+            app.EpochForTrainingEditField.Value = 200;
 
             % Create GradientThresholdEditFieldLabel
             app.GradientThresholdEditFieldLabel = uilabel(app.GridLayout14);
@@ -5899,7 +6115,7 @@ end
             app.NumberOfHiddenUnitsEditField.Limits = [1 Inf];
             app.NumberOfHiddenUnitsEditField.Layout.Row = 14;
             app.NumberOfHiddenUnitsEditField.Layout.Column = 2;
-            app.NumberOfHiddenUnitsEditField.Value = 45;
+            app.NumberOfHiddenUnitsEditField.Value = 15;
 
             % Create SplitForValidationLabel
             app.SplitForValidationLabel = uilabel(app.GridLayout14);
@@ -5923,10 +6139,10 @@ end
             % Create GridLayout15
             app.GridLayout15 = uigridlayout(app.GapFillingTab);
             app.GridLayout15.ColumnWidth = {58, '1.09x', 84, '1x', 108};
-            app.GridLayout15.RowHeight = {22, 23, 21, 22, 22, 22, '1x', '4x', 22, '22.35x'};
-            app.GridLayout15.ColumnSpacing = 4.16666666666667;
-            app.GridLayout15.RowSpacing = 5.81817904385653;
-            app.GridLayout15.Padding = [4.16666666666667 5.81817904385653 4.16666666666667 5.81817904385653];
+            app.GridLayout15.RowHeight = {22, 23, 21, 22, 22, '2.24x', 22, '6.76x', '1x'};
+            app.GridLayout15.ColumnSpacing = 2.83332824707031;
+            app.GridLayout15.RowSpacing = 6.09999694824219;
+            app.GridLayout15.Padding = [2.83332824707031 6.09999694824219 2.83332824707031 6.09999694824219];
 
             % Create GapFillButton
             app.GapFillButton = uibutton(app.GridLayout15, 'push');
@@ -5955,21 +6171,12 @@ end
             app.RawDataButton.Layout.Column = 5;
             app.RawDataButton.Text = 'RawData';
 
-            % Create SaveGapFillButton
-            app.SaveGapFillButton = uibutton(app.GridLayout15, 'push');
-            app.SaveGapFillButton.ButtonPushedFcn = createCallbackFcn(app, @SaveGapFillButtonPushed2, true);
-            app.SaveGapFillButton.BackgroundColor = [0.1059 0.5216 0.4706];
-            app.SaveGapFillButton.FontColor = [1 1 1];
-            app.SaveGapFillButton.Layout.Row = 4;
-            app.SaveGapFillButton.Layout.Column = 5;
-            app.SaveGapFillButton.Text = 'SaveGapFill';
-
             % Create UITable5
             app.UITable5 = uitable(app.GridLayout15);
             app.UITable5.ColumnName = {'Column 1'; 'Column 2'; 'Column 3'; 'Column 4'};
             app.UITable5.ColumnRearrangeable = 'on';
             app.UITable5.RowName = {};
-            app.UITable5.Layout.Row = 10;
+            app.UITable5.Layout.Row = 8;
             app.UITable5.Layout.Column = [1 2];
 
             % Create UITable5_2
@@ -5977,12 +6184,12 @@ end
             app.UITable5_2.ColumnName = {'Column 1'; 'Column 2'; 'Column 3'; 'Column 4'};
             app.UITable5_2.ColumnRearrangeable = 'on';
             app.UITable5_2.RowName = {};
-            app.UITable5_2.Layout.Row = 10;
+            app.UITable5_2.Layout.Row = 8;
             app.UITable5_2.Layout.Column = [3 4];
 
             % Create Tree
             app.Tree = uitree(app.GridLayout15, 'checkbox');
-            app.Tree.Layout.Row = [8 10];
+            app.Tree.Layout.Row = [6 8];
             app.Tree.Layout.Column = 5;
 
             % Create Node
@@ -5999,7 +6206,7 @@ end
 
             % Create TabGroup2
             app.TabGroup2 = uitabgroup(app.GridLayout15);
-            app.TabGroup2.Layout.Row = [1 8];
+            app.TabGroup2.Layout.Row = [1 6];
             app.TabGroup2.Layout.Column = [1 4];
 
             % Create ViewRawDataTab
@@ -6012,7 +6219,7 @@ end
             xlabel(app.UIAxes6_4, 'X')
             ylabel(app.UIAxes6_4, 'Y')
             zlabel(app.UIAxes6_4, 'Z')
-            app.UIAxes6_4.Position = [1 4 1057 228];
+            app.UIAxes6_4.Position = [1 1 1070 224];
 
             % Create ViewPredictedDataTab
             app.ViewPredictedDataTab = uitab(app.TabGroup2);
@@ -6024,7 +6231,7 @@ end
             xlabel(app.UIAxes6_2, 'X')
             ylabel(app.UIAxes6_2, 'Y')
             zlabel(app.UIAxes6_2, 'Z')
-            app.UIAxes6_2.Position = [2 4 1056 229];
+            app.UIAxes6_2.Position = [2 1 1069 225];
 
             % Create ViewGapFilledDataTab
             app.ViewGapFilledDataTab = uitab(app.TabGroup2);
@@ -6036,17 +6243,17 @@ end
             xlabel(app.UIAxes6_3, 'X')
             ylabel(app.UIAxes6_3, 'Y')
             zlabel(app.UIAxes6_3, 'Z')
-            app.UIAxes6_3.Position = [2 4 1056 229];
+            app.UIAxes6_3.Position = [2 0 1069 226];
 
             % Create RawDataLabel
             app.RawDataLabel = uilabel(app.GridLayout15);
-            app.RawDataLabel.Layout.Row = 9;
+            app.RawDataLabel.Layout.Row = 7;
             app.RawDataLabel.Layout.Column = 1;
             app.RawDataLabel.Text = 'Raw Data';
 
             % Create PredictedDataLabel
             app.PredictedDataLabel = uilabel(app.GridLayout15);
-            app.PredictedDataLabel.Layout.Row = 9;
+            app.PredictedDataLabel.Layout.Row = 7;
             app.PredictedDataLabel.Layout.Column = 3;
             app.PredictedDataLabel.Text = 'Predicted Data';
 
@@ -6055,7 +6262,7 @@ end
             app.ExportKvaluesButton.ButtonPushedFcn = createCallbackFcn(app, @ExportKvaluesButtonPushed2, true);
             app.ExportKvaluesButton.BackgroundColor = [0.0627 0.4314 0.3882];
             app.ExportKvaluesButton.FontColor = [1 1 1];
-            app.ExportKvaluesButton.Layout.Row = 5;
+            app.ExportKvaluesButton.Layout.Row = 4;
             app.ExportKvaluesButton.Layout.Column = 5;
             app.ExportKvaluesButton.Text = 'ExportKvalues';
 
@@ -6064,9 +6271,14 @@ end
             app.ExportFvaluesButton.ButtonPushedFcn = createCallbackFcn(app, @ExportFvaluesButtonPushed2, true);
             app.ExportFvaluesButton.BackgroundColor = [0.0314 0.302 0.2667];
             app.ExportFvaluesButton.FontColor = [1 1 1];
-            app.ExportFvaluesButton.Layout.Row = 6;
+            app.ExportFvaluesButton.Layout.Row = 5;
             app.ExportFvaluesButton.Layout.Column = 5;
             app.ExportFvaluesButton.Text = 'ExportFvalues';
+
+            % Create TextArea_2
+            app.TextArea_2 = uitextarea(app.GridLayout15);
+            app.TextArea_2.Layout.Row = 9;
+            app.TextArea_2.Layout.Column = [1 5];
 
             % Create ContextMenu
             app.ContextMenu = uicontextmenu(app.SapFlowerUIFigure);
