@@ -5131,7 +5131,7 @@ end
                 '    Contact Jiaxin Wang'
                 ''
                 '    I am currently working at Virginia Tech as a postdoctoral associate.'
-                '    If you have any requires and questions about SapFlower, Please send'
+                '    If you have any inquires and questions about SapFlower, Please send'
                 '    me an email at: jiaxin.wang@vt.edu; jiaxinwang362@gmail.com'
                 '    '
                 ''
