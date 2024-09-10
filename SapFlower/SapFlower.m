@@ -5211,6 +5211,11 @@ end
             % Make the dialog visible
             dialog.setVisible(true);
         end
+
+        % Menu selected function: ManualMenu
+        function ManualMenuSelected(app, event)
+            web('https://drive.google.com/file/d/1SY2H-VPlrfjW-QAQ76gNsfPjQdndGrBF/view?usp=sharing', '-browser')
+        end
     end
 
     % Component initialization
@@ -5387,6 +5392,7 @@ end
 
             % Create ManualMenu
             app.ManualMenu = uimenu(app.HelpMenu);
+            app.ManualMenu.MenuSelectedFcn = createCallbackFcn(app, @ManualMenuSelected, true);
             app.ManualMenu.Text = 'Manual';
 
             % Create HomePageMenu
