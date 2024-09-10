@@ -3436,55 +3436,91 @@ end
             save(filePath, '-struct', 'dataStruct', '-v7.3');  % Use '-v7.3' for large files
         end
 
-        function saveEditedDataAndUpdateUI(app)
-            % Start a timer to measure the duration of the save operation
-            tic;
-        
-            % Restore original X data before saving
-            app.restoreOriginalXData();
-        
-            % Get the modified data from UITable4
-            modifiedData = app.UITable4.Data;
-            filePath = app.DataFilePath;
-        
-            % Ensure filePath is correctly set
-            if isempty(filePath) || ~isfile(filePath)
-                msgbox('Data file path is not valid or file does not exist.', 'Error', 'error');
-                return;
-            end
-        
-            % Extract the file extension
-            [~, ~, ext] = fileparts(filePath);
-        
-            try
-                % Check the file format and save the necessary columns
-                switch ext
-                    case '.csv'
-                        saveDataToCSV(app, filePath, modifiedData);
-                    case '.xlsx'
-                        saveDataToXLSX(app, filePath, modifiedData);
-                    case '.mat'
-                        saveDataToMAT(app, filePath, modifiedData);
-                    otherwise
-                        error('Unsupported file format');
-                end
-        
-                % Update the UITable4 with the saved data
-                app.UITable4.Data = modifiedData;
-        
-                % Re-plot the data for all sensors in UIAxes4
-                app.plotData();
-        
-                % Measure and display the elapsed time
-                elapsedTime = toc;
-                msgbox(['Edited data saved to ', filePath, ' in ', num2str(elapsedTime), ' seconds.'], 'Success');
-            catch ME
-                % Display error message with detailed information
-                errMsg = sprintf('Error saving the data to %s: %s', filePath, ME.message);
-                msgbox(errMsg, 'Error', 'error');
-                disp(errMsg);
-            end
+function saveEditedDataAndUpdateUI(app)
+    % Start a timer to measure the duration of the save operation
+    tic;
+
+    % Restore original X data before saving
+    app.restoreOriginalXData();
+
+    % Get the modified data from UITable4
+    modifiedData = app.UITable4.Data;
+    filePath = app.DataFilePath;
+
+    % Ensure filePath is correctly set
+    if isempty(filePath)
+        msgbox('Data file path is not set. Please choose a file path to save.', 'Error', 'error');
+        return;
+    end
+
+    % Extract folder path and file extension
+    [folderPath, ~, ext] = fileparts(filePath);
+
+    % Debug: Check if the file path is correct
+    disp(['Attempting to save file to path: ', filePath]);
+
+    % Check if the folder exists, if not, attempt to create it
+    if ~isfolder(folderPath)
+        try
+            mkdir(folderPath);  % Create the folder if it doesn't exist
+            disp(['Created directory: ', folderPath]);
+        catch ME
+            msgbox(['Unable to create the folder: ', folderPath, '. Error: ', ME.message], 'Error', 'error');
+            return;
         end
+    end
+
+    % Simple file write test to confirm path is writable
+    testFilePath = fullfile(folderPath, 'test_file.txt');
+    try
+        fid = fopen(testFilePath, 'w');
+        if fid == -1
+            error('Unable to create a test file in the selected directory.');
+        else
+            fprintf(fid, 'This is a test file to verify write permissions.\n');
+            fclose(fid);
+            delete(testFilePath);  % Remove the test file after checking write permissions
+            disp('Test file created and deleted successfully. Path is writable.');
+        end
+    catch ME
+        msgbox(['Error during test file creation: ', ME.message], 'Error', 'error');
+        return;
+    end
+
+    try
+        % Depending on the file extension, save the data
+        switch ext
+            case '.csv'
+                % Save the modified data to CSV
+                writetable(modifiedData, filePath);  % Use writetable to save CSV
+                disp(['Data successfully saved to ', filePath]);
+            case '.xlsx'
+                % Save the modified data to XLSX
+                writetable(modifiedData, filePath, 'FileType', 'spreadsheet');
+                disp(['Data successfully saved to ', filePath]);
+            case '.mat'
+                % Save the modified data to MAT
+                data = modifiedData;
+                save(filePath, 'data');
+                disp(['Data successfully saved to ', filePath]);
+            otherwise
+                error('Unsupported file format');
+        end
+
+        % Success: Update the UITable4 with the saved data and re-plot
+        app.UITable4.Data = modifiedData;
+        app.plotData();
+
+        % Measure and display the elapsed time
+        elapsedTime = toc;
+        msgbox(['Edited data saved to ', filePath, ' in ', num2str(elapsedTime), ' seconds.'], 'Success');
+    catch ME
+        % Detailed error message
+        errMsg = sprintf('Error saving the data to %s: %s\nDetails: %s', filePath, ME.message, ME.getReport());
+        msgbox(errMsg, 'Error', 'error');
+        disp(errMsg);  % Also display in the command window
+    end
+end
         
         
         function saveDataToCSV(~, filePath, modifiedData)
@@ -4425,19 +4461,24 @@ end
                     % Call the function to save edited data and update the UI
                     app.saveEditedDataAndUpdateUI();
                     
-                case 'Save As New File'
-                    % Prompt the user to specify a new file name and location
-                    [file, path] = uiputfile({'*.csv'; '*.xlsx'; '*.mat'}, 'Save As New File');
-                    if isequal(file, 0) || isequal(path, 0)
-                        % User canceled the save as new file operation
-                        msgbox('Save operation canceled.', 'Canceled');
-                    else
-                        % Update the DataFilePath property to the new file path
-                        app.DataFilePath = fullfile(path, file);
-                        
-                        % Save the data to the new file and update the UI
-                        app.saveEditedDataAndUpdateUI();
-                    end
+                    % Save As New File block
+                    case 'Save As New File'
+                        % Prompt the user to specify a new file name and location
+                        [file, path] = uiputfile({'*.csv'; '*.xlsx'; '*.mat'}, 'Save As New File');
+                        if isequal(file, 0) || isequal(path, 0)
+                            % User canceled the save as new file operation
+                            msgbox('Save operation canceled.', 'Canceled');
+                        else
+                            % Update the DataFilePath property to the new file path
+                            app.DataFilePath = fullfile(path, file);
+                            
+                            % Debugging: display the generated path
+                            disp(['Saving to: ', app.DataFilePath]);
+                            
+                            % Save the data to the new file and update the UI
+                            app.saveEditedDataAndUpdateUI();
+                        end
+
                     
                 case 'Cancel'
                     % User canceled the operation
