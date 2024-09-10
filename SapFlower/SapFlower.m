@@ -92,9 +92,9 @@ classdef SapFlower < matlab.apps.AppBase
         FinishEditingButton             matlab.ui.control.Button
         UndoDeletionButton              matlab.ui.control.Button
         DeletedTdataButton              matlab.ui.control.Button
-        UIAxes5                         matlab.ui.control.UIAxes
-        UIAxes4                         matlab.ui.control.UIAxes
         UIAxes3                         matlab.ui.control.UIAxes
+        UIAxes4                         matlab.ui.control.UIAxes
+        UIAxes5                         matlab.ui.control.UIAxes
         ModelTrainingTab                matlab.ui.container.Tab
         GridLayout14                    matlab.ui.container.GridLayout
         SplitForValidationEditField     matlab.ui.control.NumericEditField
@@ -5672,24 +5672,24 @@ end
             app.GridLayout13.RowSpacing = 3.5;
             app.GridLayout13.Padding = [1.5454531582919 3.5 1.5454531582919 3.5];
 
-            % Create UIAxes3
-            app.UIAxes3 = uiaxes(app.GridLayout13);
-            xlabel(app.UIAxes3, 'Time')
-            ylabel(app.UIAxes3, 'dT Overview')
-            zlabel(app.UIAxes3, 'Z')
-            app.UIAxes3.TickLength = [0.006 0.025];
-            app.UIAxes3.GridLineWidth = 0.25;
-            app.UIAxes3.MinorGridLineWidth = 0.25;
-            app.UIAxes3.GridLineStyle = '-.';
-            app.UIAxes3.XColor = [0 0 0];
-            app.UIAxes3.YColor = [0 0 0];
-            app.UIAxes3.ZColor = [0 0 0];
-            app.UIAxes3.LineWidth = 0.25;
-            app.UIAxes3.Box = 'on';
-            app.UIAxes3.XGrid = 'on';
-            app.UIAxes3.YGrid = 'on';
-            app.UIAxes3.Layout.Row = 3;
-            app.UIAxes3.Layout.Column = [1 8];
+            % Create UIAxes5
+            app.UIAxes5 = uiaxes(app.GridLayout13);
+            xlabel(app.UIAxes5, 'Time')
+            ylabel(app.UIAxes5, 'K detail')
+            zlabel(app.UIAxes5, 'Z')
+            app.UIAxes5.TickLength = [0.006 0.025];
+            app.UIAxes5.GridLineStyle = '-.';
+            app.UIAxes5.XColor = [0 0 0];
+            app.UIAxes5.XTick = [0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1];
+            app.UIAxes5.YColor = [0 0 0];
+            app.UIAxes5.YTick = [0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1];
+            app.UIAxes5.ZColor = [0 0 0];
+            app.UIAxes5.LineWidth = 0.25;
+            app.UIAxes5.Box = 'on';
+            app.UIAxes5.XGrid = 'on';
+            app.UIAxes5.YGrid = 'on';
+            app.UIAxes5.Layout.Row = 3;
+            app.UIAxes5.Layout.Column = [9 21];
 
             % Create UIAxes4
             app.UIAxes4 = uiaxes(app.GridLayout13);
@@ -5711,24 +5711,24 @@ end
             app.UIAxes4.Layout.Column = [1 21];
             app.UIAxes4.PickableParts = 'all';
 
-            % Create UIAxes5
-            app.UIAxes5 = uiaxes(app.GridLayout13);
-            xlabel(app.UIAxes5, 'Time')
-            ylabel(app.UIAxes5, 'K detail')
-            zlabel(app.UIAxes5, 'Z')
-            app.UIAxes5.TickLength = [0.006 0.025];
-            app.UIAxes5.GridLineStyle = '-.';
-            app.UIAxes5.XColor = [0 0 0];
-            app.UIAxes5.XTick = [0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1];
-            app.UIAxes5.YColor = [0 0 0];
-            app.UIAxes5.YTick = [0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1];
-            app.UIAxes5.ZColor = [0 0 0];
-            app.UIAxes5.LineWidth = 0.25;
-            app.UIAxes5.Box = 'on';
-            app.UIAxes5.XGrid = 'on';
-            app.UIAxes5.YGrid = 'on';
-            app.UIAxes5.Layout.Row = 3;
-            app.UIAxes5.Layout.Column = [9 21];
+            % Create UIAxes3
+            app.UIAxes3 = uiaxes(app.GridLayout13);
+            xlabel(app.UIAxes3, 'Time')
+            ylabel(app.UIAxes3, 'dT Overview')
+            zlabel(app.UIAxes3, 'Z')
+            app.UIAxes3.TickLength = [0.006 0.025];
+            app.UIAxes3.GridLineWidth = 0.25;
+            app.UIAxes3.MinorGridLineWidth = 0.25;
+            app.UIAxes3.GridLineStyle = '-.';
+            app.UIAxes3.XColor = [0 0 0];
+            app.UIAxes3.YColor = [0 0 0];
+            app.UIAxes3.ZColor = [0 0 0];
+            app.UIAxes3.LineWidth = 0.25;
+            app.UIAxes3.Box = 'on';
+            app.UIAxes3.XGrid = 'on';
+            app.UIAxes3.YGrid = 'on';
+            app.UIAxes3.Layout.Row = 3;
+            app.UIAxes3.Layout.Column = [1 8];
 
             % Create DeletedTdataButton
             app.DeletedTdataButton = uibutton(app.GridLayout13, 'push');
