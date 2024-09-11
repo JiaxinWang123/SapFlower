@@ -8,7 +8,7 @@ Please note that functions in MENU and for data smoothing have been disabled and
 
 ![Screenshot 2024-08-21 190307](https://github.com/user-attachments/assets/880f5292-fd88-4de6-a53f-dbc0fd14d1ba)
 
-![Screenshot 2024-08-25 140411](https://github.com/user-attachments/assets/22cb02f6-0e86-4300-b3f8-7f5b8c3a0634)
+![Screenshot 2024-09-10 115111](https://github.com/user-attachments/assets/91ffe493-26cd-4687-a00b-b76e58d1c780)
 
 ![Screenshot 2024-09-04 103308](https://github.com/user-attachments/assets/f72669a2-0d5a-4cc1-87e8-27f60e3be848)
 
