@@ -6,7 +6,7 @@ Please note that functions in MENU and for data smoothing have been disabled and
 
 ![SapFlower](https://github.com/JiaxinWang123/SapFlower/assets/98176596/15ed876f-8e04-4599-a930-81e870693b1e)
 
-![Screenshot 2024-08-21 190307](https://github.com/user-attachments/assets/880f5292-fd88-4de6-a53f-dbc0fd14d1ba)
+![Screenshot 2024-09-10 115039](https://github.com/user-attachments/assets/df37fe8f-e1f5-4b8c-94de-46e184c92a58)
 
 ![Screenshot 2024-09-10 115111](https://github.com/user-attachments/assets/91ffe493-26cd-4687-a00b-b76e58d1c780)
 
