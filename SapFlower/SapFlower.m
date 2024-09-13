@@ -30,6 +30,9 @@ classdef SapFlower < matlab.apps.AppBase
         ReverseSelectedDataMenu         matlab.ui.container.Menu
         UndoMenu                        matlab.ui.container.Menu
         UndoAllMenu                     matlab.ui.container.Menu
+        ViewMenu                        matlab.ui.container.Menu
+        DarkModeMenu                    matlab.ui.container.Menu
+        LightModeMenu                   matlab.ui.container.Menu
         HelpMenu                        matlab.ui.container.Menu
         AboutMenu                       matlab.ui.container.Menu
         ManualMenu                      matlab.ui.container.Menu
@@ -41,7 +44,7 @@ classdef SapFlower < matlab.apps.AppBase
         GridLayout                      matlab.ui.container.GridLayout
         TabGroup                        matlab.ui.container.TabGroup
         ProjectConfigurationTab         matlab.ui.container.Tab
-        GridLayout10                    matlab.ui.container.GridLayout
+        GridLayout16                    matlab.ui.container.GridLayout
         OutputTextArea                  matlab.ui.control.TextArea
         DataPathButton                  matlab.ui.control.Button
         DataFilePathEditField           matlab.ui.control.EditField
@@ -1472,6 +1475,7 @@ methods (Access = public)
             message = sprintf('Epoch: %d, Iteration: %d, Loss: %.4f\n', ...
                 info.Epoch, info.Iteration, info.TrainingLoss);
             app.TextArea.Value = [app.TextArea.Value; message];
+            scroll(app.TextArea, "bottom");
             drawnow; % Update the TextArea in real-time
         end
     
@@ -3436,91 +3440,91 @@ end
             save(filePath, '-struct', 'dataStruct', '-v7.3');  % Use '-v7.3' for large files
         end
 
-function saveEditedDataAndUpdateUI(app)
-    % Start a timer to measure the duration of the save operation
-    tic;
-
-    % Restore original X data before saving
-    app.restoreOriginalXData();
-
-    % Get the modified data from UITable4
-    modifiedData = app.UITable4.Data;
-    filePath = app.DataFilePath;
-
-    % Ensure filePath is correctly set
-    if isempty(filePath)
-        msgbox('Data file path is not set. Please choose a file path to save.', 'Error', 'error');
-        return;
-    end
-
-    % Extract folder path and file extension
-    [folderPath, ~, ext] = fileparts(filePath);
-
-    % Debug: Check if the file path is correct
-    disp(['Attempting to save file to path: ', filePath]);
-
-    % Check if the folder exists, if not, attempt to create it
-    if ~isfolder(folderPath)
-        try
-            mkdir(folderPath);  % Create the folder if it doesn't exist
-            disp(['Created directory: ', folderPath]);
-        catch ME
-            msgbox(['Unable to create the folder: ', folderPath, '. Error: ', ME.message], 'Error', 'error');
-            return;
+        function saveEditedDataAndUpdateUI(app)
+            % Start a timer to measure the duration of the save operation
+            tic;
+        
+            % Restore original X data before saving
+            app.restoreOriginalXData();
+        
+            % Get the modified data from UITable4
+            modifiedData = app.UITable4.Data;
+            filePath = app.DataFilePath;
+        
+            % Ensure filePath is correctly set
+            if isempty(filePath)
+                msgbox('Data file path is not set. Please choose a file path to save.', 'Error', 'error');
+                return;
+            end
+        
+            % Extract folder path and file extension
+            [folderPath, ~, ext] = fileparts(filePath);
+        
+            % Debug: Check if the file path is correct
+            disp(['Attempting to save file to path: ', filePath]);
+        
+            % Check if the folder exists, if not, attempt to create it
+            if ~isfolder(folderPath)
+                try
+                    mkdir(folderPath);  % Create the folder if it doesn't exist
+                    disp(['Created directory: ', folderPath]);
+                catch ME
+                    msgbox(['Unable to create the folder: ', folderPath, '. Error: ', ME.message], 'Error', 'error');
+                    return;
+                end
+            end
+        
+            % Simple file write test to confirm path is writable
+            testFilePath = fullfile(folderPath, 'test_file.txt');
+            try
+                fid = fopen(testFilePath, 'w');
+                if fid == -1
+                    error('Unable to create a test file in the selected directory.');
+                else
+                    fprintf(fid, 'This is a test file to verify write permissions.\n');
+                    fclose(fid);
+                    delete(testFilePath);  % Remove the test file after checking write permissions
+                    disp('Test file created and deleted successfully. Path is writable.');
+                end
+            catch ME
+                msgbox(['Error during test file creation: ', ME.message], 'Error', 'error');
+                return;
+            end
+        
+            try
+                % Depending on the file extension, save the data
+                switch ext
+                    case '.csv'
+                        % Save the modified data to CSV
+                        writetable(modifiedData, filePath);  % Use writetable to save CSV
+                        disp(['Data successfully saved to ', filePath]);
+                    case '.xlsx'
+                        % Save the modified data to XLSX
+                        writetable(modifiedData, filePath, 'FileType', 'spreadsheet');
+                        disp(['Data successfully saved to ', filePath]);
+                    case '.mat'
+                        % Save the modified data to MAT
+                        data = modifiedData;
+                        save(filePath, 'data');
+                        disp(['Data successfully saved to ', filePath]);
+                    otherwise
+                        error('Unsupported file format');
+                end
+        
+                % Success: Update the UITable4 with the saved data and re-plot
+                app.UITable4.Data = modifiedData;
+                app.plotData();
+        
+                % Measure and display the elapsed time
+                elapsedTime = toc;
+                msgbox(['Edited data saved to ', filePath, ' in ', num2str(elapsedTime), ' seconds.'], 'Success');
+            catch ME
+                % Detailed error message
+                errMsg = sprintf('Error saving the data to %s: %s\nDetails: %s', filePath, ME.message, ME.getReport());
+                msgbox(errMsg, 'Error', 'error');
+                disp(errMsg);  % Also display in the command window
+            end
         end
-    end
-
-    % Simple file write test to confirm path is writable
-    testFilePath = fullfile(folderPath, 'test_file.txt');
-    try
-        fid = fopen(testFilePath, 'w');
-        if fid == -1
-            error('Unable to create a test file in the selected directory.');
-        else
-            fprintf(fid, 'This is a test file to verify write permissions.\n');
-            fclose(fid);
-            delete(testFilePath);  % Remove the test file after checking write permissions
-            disp('Test file created and deleted successfully. Path is writable.');
-        end
-    catch ME
-        msgbox(['Error during test file creation: ', ME.message], 'Error', 'error');
-        return;
-    end
-
-    try
-        % Depending on the file extension, save the data
-        switch ext
-            case '.csv'
-                % Save the modified data to CSV
-                writetable(modifiedData, filePath);  % Use writetable to save CSV
-                disp(['Data successfully saved to ', filePath]);
-            case '.xlsx'
-                % Save the modified data to XLSX
-                writetable(modifiedData, filePath, 'FileType', 'spreadsheet');
-                disp(['Data successfully saved to ', filePath]);
-            case '.mat'
-                % Save the modified data to MAT
-                data = modifiedData;
-                save(filePath, 'data');
-                disp(['Data successfully saved to ', filePath]);
-            otherwise
-                error('Unsupported file format');
-        end
-
-        % Success: Update the UITable4 with the saved data and re-plot
-        app.UITable4.Data = modifiedData;
-        app.plotData();
-
-        % Measure and display the elapsed time
-        elapsedTime = toc;
-        msgbox(['Edited data saved to ', filePath, ' in ', num2str(elapsedTime), ' seconds.'], 'Success');
-    catch ME
-        % Detailed error message
-        errMsg = sprintf('Error saving the data to %s: %s\nDetails: %s', filePath, ME.message, ME.getReport());
-        msgbox(errMsg, 'Error', 'error');
-        disp(errMsg);  % Also display in the command window
-    end
-end
         
         
         function saveDataToCSV(~, filePath, modifiedData)
@@ -3972,7 +3976,7 @@ end
         end
 
     end
-    
+      
 
     % Callbacks that handle component events
     methods (Access = private)
@@ -4461,9 +4465,9 @@ end
                     % Call the function to save edited data and update the UI
                     app.saveEditedDataAndUpdateUI();
                     
-                    % Save As New File block
-                    case 'Save As New File'
-                        % Prompt the user to specify a new file name and location
+                case 'Save As New File'
+                    % Attempt to prompt the user to specify a new file name and location
+                    try
                         [file, path] = uiputfile({'*.csv'; '*.xlsx'; '*.mat'}, 'Save As New File');
                         if isequal(file, 0) || isequal(path, 0)
                             % User canceled the save as new file operation
@@ -4472,19 +4476,30 @@ end
                             % Update the DataFilePath property to the new file path
                             app.DataFilePath = fullfile(path, file);
                             
-                            % Debugging: display the generated path
-                            disp(['Saving to: ', app.DataFilePath]);
-                            
                             % Save the data to the new file and update the UI
                             app.saveEditedDataAndUpdateUI();
                         end
-
+                    catch ME
+                        % If there's an error with uiputfile, log the error and provide a fallback
+                        disp(['Error opening uiputfile: ', ME.message]);
+                        % Fallback: Ask user to input the file name and path via dialog
+                        filePrompt = inputdlg({'Enter the file path and name (e.g., C:\Users\test.csv):'}, ...
+                                              'Manual File Path Input', [1 50]);
+                        if isempty(filePrompt)
+                            % User canceled the manual input operation
+                            msgbox('Save operation canceled.', 'Canceled');
+                        else
+                            % Use the provided file path from the input dialog
+                            app.DataFilePath = filePrompt{1};
+                            % Save the data to the specified file and update the UI
+                            app.saveEditedDataAndUpdateUI();
+                        end
+                    end
                     
                 case 'Cancel'
                     % User canceled the operation
                     msgbox('Operation canceled.', 'Canceled');
             end
-
         end
 
         % Button pushed function: SaveDataButton
@@ -5212,9 +5227,19 @@ end
             dialog.setVisible(true);
         end
 
+        % Menu selected function: DarkModeMenu
+        function DarkModeMenuSelected(app, event)
+            app.SapFlowerUIFigure.Theme = "dark";
+        end
+
+        % Menu selected function: LightModeMenu
+        function LightModeMenuSelected(app, event)
+            app.SapFlowerUIFigure.Theme = "light";
+        end
+
         % Menu selected function: ManualMenu
         function ManualMenuSelected(app, event)
-            web('https://drive.google.com/file/d/1SY2H-VPlrfjW-QAQ76gNsfPjQdndGrBF/view?usp=sharing', '-browser')
+            web("https://drive.google.com/file/d/1SY2H-VPlrfjW-QAQ76gNsfPjQdndGrBF/view?usp=drive_link", '-browser');
         end
     end
 
@@ -5381,6 +5406,23 @@ end
             app.UndoAllMenu.Accelerator = 'A';
             app.UndoAllMenu.Text = 'UndoAll';
 
+            % Create ViewMenu
+            app.ViewMenu = uimenu(app.SapFlowerUIFigure);
+            app.ViewMenu.ForegroundColor = [0 0 0];
+            app.ViewMenu.Text = 'View';
+
+            % Create DarkModeMenu
+            app.DarkModeMenu = uimenu(app.ViewMenu);
+            app.DarkModeMenu.MenuSelectedFcn = createCallbackFcn(app, @DarkModeMenuSelected, true);
+            app.DarkModeMenu.ForegroundColor = [0 0 0];
+            app.DarkModeMenu.Text = 'DarkMode';
+
+            % Create LightModeMenu
+            app.LightModeMenu = uimenu(app.ViewMenu);
+            app.LightModeMenu.MenuSelectedFcn = createCallbackFcn(app, @LightModeMenuSelected, true);
+            app.LightModeMenu.ForegroundColor = [0 0 0];
+            app.LightModeMenu.Text = 'LightMode';
+
             % Create HelpMenu
             app.HelpMenu = uimenu(app.SapFlowerUIFigure);
             app.HelpMenu.Text = 'Help';
@@ -5435,25 +5477,25 @@ end
             % Create ProjectConfigurationTab
             app.ProjectConfigurationTab = uitab(app.TabGroup);
             app.ProjectConfigurationTab.Title = 'Project Configuration';
-            app.ProjectConfigurationTab.BackgroundColor = [0.8 0.8 0.8];
+            app.ProjectConfigurationTab.BackgroundColor = [0.9412 0.9412 0.9412];
 
-            % Create GridLayout10
-            app.GridLayout10 = uigridlayout(app.ProjectConfigurationTab);
-            app.GridLayout10.ColumnWidth = {179, '1.61x', '1.24x', 92, '1.47x', '1.47x', 82, '1.5x', '1x', 99, '4.71x', 229};
-            app.GridLayout10.RowHeight = {30, 30, 30, 30, 30, 29, '9.1x', '1x'};
-            app.GridLayout10.ColumnSpacing = 1;
-            app.GridLayout10.RowSpacing = 8.88888888888889;
-            app.GridLayout10.Padding = [1 8.88888888888889 1 8.88888888888889];
-            app.GridLayout10.BackgroundColor = [0.902 0.902 0.902];
+            % Create GridLayout16
+            app.GridLayout16 = uigridlayout(app.ProjectConfigurationTab);
+            app.GridLayout16.ColumnWidth = {179, '1.56x', '1.26x', 92, '1.44x', '1.49x', 82, '1.46x', '1x', 99, '4.64x', 229};
+            app.GridLayout16.RowHeight = {30, 30, 30, 30, 30, 29, '9.1x', '1x'};
+            app.GridLayout16.ColumnSpacing = 0.461538461538462;
+            app.GridLayout16.RowSpacing = 8.88888888888889;
+            app.GridLayout16.Padding = [0.461538461538462 8.88888888888889 0.461538461538462 8.88888888888889];
+            app.GridLayout16.BackgroundColor = [0.9608 0.9608 0.9608];
 
             % Create Image
-            app.Image = uiimage(app.GridLayout10);
+            app.Image = uiimage(app.GridLayout16);
             app.Image.Layout.Row = [1 6];
             app.Image.Layout.Column = 12;
             app.Image.ImageSource = fullfile(pathToMLAPP, 'SapFlower_white_bg.png');
 
             % Create UITable4
-            app.UITable4 = uitable(app.GridLayout10);
+            app.UITable4 = uitable(app.GridLayout16);
             app.UITable4.ColumnName = '';
             app.UITable4.ColumnRearrangeable = 'on';
             app.UITable4.RowName = {};
@@ -5463,52 +5505,52 @@ end
             app.UITable4.Layout.Column = [1 12];
 
             % Create ProjectFilePathEditField
-            app.ProjectFilePathEditField = uieditfield(app.GridLayout10, 'text');
+            app.ProjectFilePathEditField = uieditfield(app.GridLayout16, 'text');
             app.ProjectFilePathEditField.Layout.Row = 2;
             app.ProjectFilePathEditField.Layout.Column = [2 9];
 
             % Create ProjectNameEditField
-            app.ProjectNameEditField = uieditfield(app.GridLayout10, 'text');
+            app.ProjectNameEditField = uieditfield(app.GridLayout16, 'text');
             app.ProjectNameEditField.Layout.Row = 3;
             app.ProjectNameEditField.Layout.Column = [2 4];
 
             % Create TimeStepIncrementsminEditField
-            app.TimeStepIncrementsminEditField = uieditfield(app.GridLayout10, 'numeric');
+            app.TimeStepIncrementsminEditField = uieditfield(app.GridLayout16, 'numeric');
             app.TimeStepIncrementsminEditField.Layout.Row = 4;
             app.TimeStepIncrementsminEditField.Layout.Column = 2;
             app.TimeStepIncrementsminEditField.Value = 30;
 
             % Create MaxChangePerIntervalEditField
-            app.MaxChangePerIntervalEditField = uieditfield(app.GridLayout10, 'numeric');
+            app.MaxChangePerIntervalEditField = uieditfield(app.GridLayout16, 'numeric');
             app.MaxChangePerIntervalEditField.Layout.Row = 5;
             app.MaxChangePerIntervalEditField.Layout.Column = 2;
             app.MaxChangePerIntervalEditField.Value = 1.5;
 
             % Create DeleteDataPointsLessThanEditField
-            app.DeleteDataPointsLessThanEditField = uieditfield(app.GridLayout10, 'numeric');
+            app.DeleteDataPointsLessThanEditField = uieditfield(app.GridLayout16, 'numeric');
             app.DeleteDataPointsLessThanEditField.Layout.Row = 6;
             app.DeleteDataPointsLessThanEditField.Layout.Column = 2;
             app.DeleteDataPointsLessThanEditField.Value = 6;
 
             % Create VPDThresholdEditField
-            app.VPDThresholdEditField = uieditfield(app.GridLayout10, 'numeric');
+            app.VPDThresholdEditField = uieditfield(app.GridLayout16, 'numeric');
             app.VPDThresholdEditField.Layout.Row = 6;
             app.VPDThresholdEditField.Layout.Column = 5;
             app.VPDThresholdEditField.Value = 2;
 
             % Create PARThresholdEditField
-            app.PARThresholdEditField = uieditfield(app.GridLayout10, 'numeric');
+            app.PARThresholdEditField = uieditfield(app.GridLayout16, 'numeric');
             app.PARThresholdEditField.Layout.Row = 5;
             app.PARThresholdEditField.Layout.Column = 5;
             app.PARThresholdEditField.Value = 50;
 
             % Create MinSapFlowEditField
-            app.MinSapFlowEditField = uieditfield(app.GridLayout10, 'numeric');
+            app.MinSapFlowEditField = uieditfield(app.GridLayout16, 'numeric');
             app.MinSapFlowEditField.Layout.Row = 4;
             app.MinSapFlowEditField.Layout.Column = 5;
 
             % Create ReservedEditField
-            app.ReservedEditField = uieditfield(app.GridLayout10, 'numeric');
+            app.ReservedEditField = uieditfield(app.GridLayout16, 'numeric');
             app.ReservedEditField.AllowEmpty = 'on';
             app.ReservedEditField.Editable = 'off';
             app.ReservedEditField.BackgroundColor = [0.9412 0.9412 0.9412];
@@ -5519,19 +5561,19 @@ end
             app.ReservedEditField.Value = [];
 
             % Create VPDTimehEditField
-            app.VPDTimehEditField = uieditfield(app.GridLayout10, 'numeric');
+            app.VPDTimehEditField = uieditfield(app.GridLayout16, 'numeric');
             app.VPDTimehEditField.Layout.Row = 5;
             app.VPDTimehEditField.Layout.Column = 8;
             app.VPDTimehEditField.Value = 24;
 
             % Create MaxSapFlowEditField
-            app.MaxSapFlowEditField = uieditfield(app.GridLayout10, 'numeric');
+            app.MaxSapFlowEditField = uieditfield(app.GridLayout16, 'numeric');
             app.MaxSapFlowEditField.Layout.Row = 4;
             app.MaxSapFlowEditField.Layout.Column = 8;
             app.MaxSapFlowEditField.Value = 1;
 
             % Create ProjectPathButton
-            app.ProjectPathButton = uibutton(app.GridLayout10, 'push');
+            app.ProjectPathButton = uibutton(app.GridLayout16, 'push');
             app.ProjectPathButton.ButtonPushedFcn = createCallbackFcn(app, @ProjectPathButtonPushed2, true);
             app.ProjectPathButton.BackgroundColor = [0.9294 0.6941 0.1255];
             app.ProjectPathButton.Layout.Row = 2;
@@ -5539,7 +5581,7 @@ end
             app.ProjectPathButton.Text = 'Project Path';
 
             % Create CreateProjectButton
-            app.CreateProjectButton = uibutton(app.GridLayout10, 'push');
+            app.CreateProjectButton = uibutton(app.GridLayout16, 'push');
             app.CreateProjectButton.ButtonPushedFcn = createCallbackFcn(app, @CreateProjectButtonPushed2, true);
             app.CreateProjectButton.BackgroundColor = [0.1686 0.5098 0.498];
             app.CreateProjectButton.FontColor = [1 1 1];
@@ -5548,7 +5590,7 @@ end
             app.CreateProjectButton.Text = 'Create Project';
 
             % Create OpenProjectButton
-            app.OpenProjectButton = uibutton(app.GridLayout10, 'push');
+            app.OpenProjectButton = uibutton(app.GridLayout16, 'push');
             app.OpenProjectButton.ButtonPushedFcn = createCallbackFcn(app, @OpenProjectButtonPushed2, true);
             app.OpenProjectButton.BackgroundColor = [0.1608 0.6392 0.6392];
             app.OpenProjectButton.FontColor = [1 1 1];
@@ -5557,7 +5599,7 @@ end
             app.OpenProjectButton.Text = 'Open Project';
 
             % Create SaveProjectButton
-            app.SaveProjectButton = uibutton(app.GridLayout10, 'push');
+            app.SaveProjectButton = uibutton(app.GridLayout16, 'push');
             app.SaveProjectButton.ButtonPushedFcn = createCallbackFcn(app, @SaveProjectButtonPushed2, true);
             app.SaveProjectButton.BackgroundColor = [0.3176 0.7216 0.6118];
             app.SaveProjectButton.FontColor = [1 1 1];
@@ -5566,73 +5608,84 @@ end
             app.SaveProjectButton.Text = 'Save Project';
 
             % Create DefineProjectFilePathLabel
-            app.DefineProjectFilePathLabel = uilabel(app.GridLayout10);
+            app.DefineProjectFilePathLabel = uilabel(app.GridLayout16);
+            app.DefineProjectFilePathLabel.FontColor = [0 0 0];
             app.DefineProjectFilePathLabel.Layout.Row = 2;
             app.DefineProjectFilePathLabel.Layout.Column = 1;
             app.DefineProjectFilePathLabel.Text = 'Define Project File Path';
 
             % Create ProjectNameLabel
-            app.ProjectNameLabel = uilabel(app.GridLayout10);
+            app.ProjectNameLabel = uilabel(app.GridLayout16);
+            app.ProjectNameLabel.FontColor = [0 0 0];
             app.ProjectNameLabel.Layout.Row = 3;
             app.ProjectNameLabel.Layout.Column = 1;
             app.ProjectNameLabel.Text = 'Project Name';
 
             % Create TimeStepIncrementsminLabel
-            app.TimeStepIncrementsminLabel = uilabel(app.GridLayout10);
+            app.TimeStepIncrementsminLabel = uilabel(app.GridLayout16);
+            app.TimeStepIncrementsminLabel.FontColor = [0 0 0];
             app.TimeStepIncrementsminLabel.Layout.Row = 4;
             app.TimeStepIncrementsminLabel.Layout.Column = 1;
             app.TimeStepIncrementsminLabel.Text = 'Time Step Increments (min)';
 
             % Create MaxChangePerIntervalLabel
-            app.MaxChangePerIntervalLabel = uilabel(app.GridLayout10);
+            app.MaxChangePerIntervalLabel = uilabel(app.GridLayout16);
+            app.MaxChangePerIntervalLabel.FontColor = [0 0 0];
             app.MaxChangePerIntervalLabel.Layout.Row = 5;
             app.MaxChangePerIntervalLabel.Layout.Column = 1;
             app.MaxChangePerIntervalLabel.Text = 'Max Change Per Interval';
 
             % Create DeleteDataPointsLessThanLabel
-            app.DeleteDataPointsLessThanLabel = uilabel(app.GridLayout10);
+            app.DeleteDataPointsLessThanLabel = uilabel(app.GridLayout16);
+            app.DeleteDataPointsLessThanLabel.FontColor = [0 0 0];
             app.DeleteDataPointsLessThanLabel.Layout.Row = 6;
             app.DeleteDataPointsLessThanLabel.Layout.Column = 1;
             app.DeleteDataPointsLessThanLabel.Text = 'Delete Data Points Less Than';
 
             % Create MinSapFlowLabel
-            app.MinSapFlowLabel = uilabel(app.GridLayout10);
+            app.MinSapFlowLabel = uilabel(app.GridLayout16);
+            app.MinSapFlowLabel.FontColor = [0 0 0];
             app.MinSapFlowLabel.Layout.Row = 4;
             app.MinSapFlowLabel.Layout.Column = 4;
             app.MinSapFlowLabel.Text = 'Min SapFlow';
 
             % Create PARThresholdLabel
-            app.PARThresholdLabel = uilabel(app.GridLayout10);
+            app.PARThresholdLabel = uilabel(app.GridLayout16);
+            app.PARThresholdLabel.FontColor = [0 0 0];
             app.PARThresholdLabel.Layout.Row = 5;
             app.PARThresholdLabel.Layout.Column = 4;
             app.PARThresholdLabel.Text = 'PAR Threshold';
 
             % Create VPDThresholdLabel
-            app.VPDThresholdLabel = uilabel(app.GridLayout10);
+            app.VPDThresholdLabel = uilabel(app.GridLayout16);
+            app.VPDThresholdLabel.FontColor = [0 0 0];
             app.VPDThresholdLabel.Layout.Row = 6;
             app.VPDThresholdLabel.Layout.Column = 4;
             app.VPDThresholdLabel.Text = 'VPD Threshold';
 
             % Create MaxSapFlowLabel
-            app.MaxSapFlowLabel = uilabel(app.GridLayout10);
+            app.MaxSapFlowLabel = uilabel(app.GridLayout16);
+            app.MaxSapFlowLabel.FontColor = [0 0 0];
             app.MaxSapFlowLabel.Layout.Row = 4;
             app.MaxSapFlowLabel.Layout.Column = 7;
             app.MaxSapFlowLabel.Text = 'Max SapFlow';
 
             % Create VPDTimehLabel
-            app.VPDTimehLabel = uilabel(app.GridLayout10);
+            app.VPDTimehLabel = uilabel(app.GridLayout16);
+            app.VPDTimehLabel.FontColor = [0 0 0];
             app.VPDTimehLabel.Layout.Row = 5;
             app.VPDTimehLabel.Layout.Column = 7;
             app.VPDTimehLabel.Text = 'VPD Time (h)';
 
             % Create ReservedLabel
-            app.ReservedLabel = uilabel(app.GridLayout10);
+            app.ReservedLabel = uilabel(app.GridLayout16);
+            app.ReservedLabel.FontColor = [0 0 0];
             app.ReservedLabel.Layout.Row = 6;
             app.ReservedLabel.Layout.Column = 7;
             app.ReservedLabel.Text = 'Reserved';
 
             % Create SaveAsProjectButton
-            app.SaveAsProjectButton = uibutton(app.GridLayout10, 'push');
+            app.SaveAsProjectButton = uibutton(app.GridLayout16, 'push');
             app.SaveAsProjectButton.ButtonPushedFcn = createCallbackFcn(app, @SaveAsProjectButtonPushed, true);
             app.SaveAsProjectButton.BackgroundColor = [0.251 0.6784 0.5647];
             app.SaveAsProjectButton.FontColor = [1 1 1];
@@ -5641,18 +5694,19 @@ end
             app.SaveAsProjectButton.Text = 'Save As Project';
 
             % Create DefineDataFilePathLabel
-            app.DefineDataFilePathLabel = uilabel(app.GridLayout10);
+            app.DefineDataFilePathLabel = uilabel(app.GridLayout16);
+            app.DefineDataFilePathLabel.FontColor = [0 0 0];
             app.DefineDataFilePathLabel.Layout.Row = 1;
             app.DefineDataFilePathLabel.Layout.Column = 1;
             app.DefineDataFilePathLabel.Text = 'Define Data File Path';
 
             % Create DataFilePathEditField
-            app.DataFilePathEditField = uieditfield(app.GridLayout10, 'text');
+            app.DataFilePathEditField = uieditfield(app.GridLayout16, 'text');
             app.DataFilePathEditField.Layout.Row = 1;
             app.DataFilePathEditField.Layout.Column = [2 9];
 
             % Create DataPathButton
-            app.DataPathButton = uibutton(app.GridLayout10, 'push');
+            app.DataPathButton = uibutton(app.GridLayout16, 'push');
             app.DataPathButton.ButtonPushedFcn = createCallbackFcn(app, @DataPathButtonPushed2, true);
             app.DataPathButton.BackgroundColor = [0.9294 0.6941 0.1255];
             app.DataPathButton.Layout.Row = 1;
@@ -5660,7 +5714,7 @@ end
             app.DataPathButton.Text = 'Data Path';
 
             % Create OutputTextArea
-            app.OutputTextArea = uitextarea(app.GridLayout10);
+            app.OutputTextArea = uitextarea(app.GridLayout16);
             app.OutputTextArea.Layout.Row = 8;
             app.OutputTextArea.Layout.Column = [1 12];
 
@@ -5853,6 +5907,7 @@ end
             app.autoClean = uibutton(app.GridLayout13, 'push');
             app.autoClean.ButtonPushedFcn = createCallbackFcn(app, @autoCleanButtonPushed, true);
             app.autoClean.BackgroundColor = [0.8 0.8 0.8];
+            app.autoClean.FontColor = [0.9412 0.9412 0.9412];
             app.autoClean.Layout.Row = 1;
             app.autoClean.Layout.Column = 14;
             app.autoClean.Text = 'Auto Clean';
