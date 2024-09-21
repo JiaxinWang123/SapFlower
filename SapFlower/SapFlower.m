@@ -95,11 +95,12 @@ classdef SapFlower < matlab.apps.AppBase
         FinishEditingButton             matlab.ui.control.Button
         UndoDeletionButton              matlab.ui.control.Button
         DeletedTdataButton              matlab.ui.control.Button
-        UIAxes3                         matlab.ui.control.UIAxes
-        UIAxes4                         matlab.ui.control.UIAxes
         UIAxes5                         matlab.ui.control.UIAxes
+        UIAxes4                         matlab.ui.control.UIAxes
+        UIAxes3                         matlab.ui.control.UIAxes
         ModelTrainingTab                matlab.ui.container.Tab
         GridLayout14                    matlab.ui.container.GridLayout
+        ScaleDataCheckBox               matlab.ui.control.CheckBox
         SplitForValidationEditField     matlab.ui.control.NumericEditField
         SplitForValidationLabel         matlab.ui.control.Label
         NumberOfHiddenUnitsEditField    matlab.ui.control.NumericEditField
@@ -835,33 +836,32 @@ methods (Access = public)
         end
     end
 
-    function saveTrainedModel(app, modelType, sensorName, model, predictingVariableNames)
+    function saveTrainedModel(app, modelType, sensorName, model, predictingVariableNames, scalingParams)
         try
             % Check if output path is valid
             checkOutputPath(app);
             
-            formattedSensorName = sensorName; % No need to change the sensor name format
-            
-            % Construct the output filename using the sanitized sensor name
+            formattedSensorName = sensorName; 
             outputPath = app.Output.Value; 
             modelFilename = fullfile(outputPath, 'TrainedModels', sprintf('Trained_%s_Model_%s.mat', modelType, formattedSensorName));
-        
+    
             % Create a structure to save the model and predicting variables
-            modelData.model = model;
-            modelData.predictingVariables = predictingVariableNames;
-        
+            modelData.model = model;  % Store the trained model
+            modelData.predictingVariables = predictingVariableNames;  % Store predicting variables
+    
+            % Optionally include scaling parameters
+            if nargin == 6  % Check if scaling parameters are passed
+                modelData.scalingParams = scalingParams;  % Store scaling params
+            end
+    
             % Save the structure to a .mat file
             save(modelFilename, 'modelData');
             disp(['Model saved to ', modelFilename]);
-            
-            % Debug: Display model type and details
-            disp('Saved Model:');
-            disp(modelData.model);
-            
+    
             % Update the tree with the saved model
             modelNode = uitreenode(app.ModelsNode, 'Text', modelFilename, 'NodeData', modelFilename);
             expand(app.ModelsNode);
-        
+    
         catch ME
             % Handle any unexpected errors
             msgbox(sprintf('An error occurred while saving the trained model: %s', ME.message), 'Error', 'error');
@@ -869,69 +869,192 @@ methods (Access = public)
         end
     end
 
-    function savePredictedDataWithVPDIndex(app, predictions, predictingVariableNames, validIdx, sensorName, modelType)
-        try
-            % Check if output path is valid
-            checkOutputPath(app);
-            
-            % Convert predictions to a column vector if necessary
-            if isrow(predictions)
-                predictions = predictions';
-            end
-        
-            % Initialize the table with the predictions
-            predictedDataTable = table(predictions, 'VariableNames', {'PredictedSapflow'});
-        
-            % Check if VPD is in the predicting variables
-            if ismember('VPD', predictingVariableNames)
-                indexVariableName = 'VPD';
-            else
-                % If VPD is not available, use the first predictor as the index
-                indexVariableName = predictingVariableNames{1};
-            end
-        
-            % Add the index data (VPD or first predictor) to the table
-            indexData = app.UITable4.Data.(indexVariableName)(validIdx);
-            predictedDataTable.(indexVariableName) = indexData(1:length(predictions));  % Ensure the size matches predictions
-        
-            % Add the TIMESTAMP and other environmental variables to the table
-            timestampData = app.UITable4.Data.TIMESTAMP(validIdx);
-            predictedDataTable.TIMESTAMP = timestampData(1:length(predictions));  % Ensure the size matches predictions
-        
-            for j = 1:length(predictingVariableNames)
-                columnName = predictingVariableNames{j};
-                if ~strcmp(columnName, indexVariableName)  % Skip the index variable
-                    sampledEnvData = app.UITable4.Data.(columnName)(validIdx);
-        
-                    % Align the environmental data with the prediction size
-                    if size(sampledEnvData, 1) > size(predictions, 1)
-                        sampledEnvData = sampledEnvData(1:size(predictions, 1));  % Truncate to match prediction size
-                    elseif size(sampledEnvData, 1) < size(predictions, 1)
-                        sampledEnvData(size(predictions, 1), 1) = NaN;  % Pad with NaNs if shorter
-                    end
-        
-                    % Add the aligned environmental data to the table
-                    predictedDataTable.(columnName) = sampledEnvData;
-                end
-            end
-        
-            % Save the predicted data to a CSV file in the PredictedData folder
-            outputPath = app.Output.Value; 
-            outputFilename = fullfile(outputPath, 'PredictedData', sprintf('Predicted_%s_%s.csv', modelType, sensorName));
-            writetable(predictedDataTable, outputFilename);
-            app.TextArea.Value = [app.TextArea.Value; ...
-                sprintf('Predicted data saved to %s\n', outputFilename)];
-            scroll(app.TextArea, "bottom");
-            drawnow; % Ensure the TextArea updates immediately
-        
-        catch ME
-            % Handle any unexpected errors
-            msgbox(sprintf('An error occurred while saving the predicted data: %s', ME.message), 'Error', 'error');
-            rethrow(ME);
+
+    % % Function to save predicted data with VPD index
+    % function savePredictedDataWithVPDIndex(app, predictions, predictingVariableNames, validIdx, sensorName, modelType)
+    %     try
+    %         % Check if output path is valid
+    %         checkOutputPath(app);
+    % 
+    %         % Convert predictions to a column vector if necessary
+    %         if isrow(predictions)
+    %             predictions = predictions';
+    %         end
+    % 
+    %         % Initialize the table with the predictions
+    %         predictedDataTable = table(predictions, 'VariableNames', {'PredictedSapflow'});
+    % 
+    %         % Load the trained model and check for scaling parameters
+    %         modelData = loadTrainedModel(app, modelType, sensorName);
+    % 
+    %         if isfield(modelData, 'scalingParams')
+    %             scalingParams = modelData.scalingParams;  % If scaling was used during training
+    %         else
+    %             scalingParams = struct();  % No scaling was used
+    %         end
+    % 
+    %         % Check if VPD is in the predicting variables
+    %         if ismember('VPD', predictingVariableNames)
+    %             indexVariableName = 'VPD';
+    %         else
+    %             % If VPD is not available, use the first predictor as the index
+    %             indexVariableName = predictingVariableNames{1};
+    %         end
+    % 
+    %         % Add the index data (VPD or first predictor) to the table
+    %         indexData = app.UITable4.Data.(indexVariableName)(validIdx);
+    % 
+    %         % Reverse scaling (unscale) for the index data if it was scaled during training
+    %         if isfield(scalingParams, indexVariableName)
+    %             indexData = (indexData * scalingParams.(indexVariableName).sigma) + scalingParams.(indexVariableName).mu;
+    %         end
+    % 
+    %         predictedDataTable.(indexVariableName) = indexData(1:length(predictions));  % Ensure the size matches predictions
+    % 
+    %         % Add the TIMESTAMP and other environmental variables to the table
+    %         timestampData = app.UITable4.Data.TIMESTAMP(validIdx);
+    %         predictedDataTable.TIMESTAMP = timestampData(1:length(predictions));  % Ensure the size matches predictions
+    % 
+    %         % Process each predicting variable, and reverse the scaling if necessary
+    %         for j = 1:length(predictingVariableNames)
+    %             columnName = predictingVariableNames{j};
+    %             if ~strcmp(columnName, indexVariableName)  % Skip the index variable
+    %                 sampledEnvData = app.UITable4.Data.(columnName)(validIdx);
+    % 
+    %                 % Reverse scaling (unscale) the environmental data if it was scaled during training
+    %                 if isfield(scalingParams, columnName)
+    %                     sampledEnvData = (sampledEnvData * scalingParams.(columnName).sigma) + scalingParams.(columnName).mu;
+    %                 end
+    % 
+    %                 % Align the environmental data with the prediction size
+    %                 if size(sampledEnvData, 1) > size(predictions, 1)
+    %                     sampledEnvData = sampledEnvData(1:size(predictions, 1));  % Truncate to match prediction size
+    %                 elseif size(sampledEnvData, 1) < size(predictions, 1)
+    %                     sampledEnvData(size(predictions, 1), 1) = NaN;  % Pad with NaNs if shorter
+    %                 end
+    % 
+    %                 % Add the aligned environmental data to the table
+    %                 predictedDataTable.(columnName) = sampledEnvData;
+    %             end
+    %         end
+    % 
+    %         % Save the predicted data to a CSV file in the PredictedData folder
+    %         outputPath = app.Output.Value; 
+    %         outputFilename = fullfile(outputPath, 'PredictedData', sprintf('Predicted_%s_%s.csv', modelType, sensorName));
+    %         writetable(predictedDataTable, outputFilename);
+    %         app.TextArea.Value = [app.TextArea.Value; ...
+    %             sprintf('Predicted data saved to %s\n', outputFilename)];
+    %         scroll(app.TextArea, "bottom");
+    %         drawnow; % Ensure the TextArea updates immediately
+    % 
+    %     catch ME
+    %         % Handle any unexpected errors
+    %         msgbox(sprintf('An error occurred while saving the predicted data: %s', ME.message), 'Error', 'error');
+    %         rethrow(ME);
+    %     end
+    % end
+
+
+function savePredictedDataWithVPDIndex(app, predictions, predictingVariableNames, validIdx, sensorName, modelType)
+    try
+        % Check if output path is valid
+        checkOutputPath(app);
+
+        % Convert predictions to a column vector if necessary
+        if isrow(predictions)
+            predictions = predictions';
         end
+
+        % Initialize the table with the predictions
+        predictedDataTable = table(predictions, 'VariableNames', {'PredictedSapflow'});
+
+        % Load the trained model and check for scaling parameters
+        modelData = loadTrainedModel(app, modelType, sensorName);
+        
+        if isfield(modelData, 'scalingParams')
+            scalingParams = modelData.scalingParams;  % If scaling was used during training
+        else
+            scalingParams = struct();  % No scaling was used
+        end
+
+        % Check if VPD is in the predicting variables
+        if ismember('VPD', predictingVariableNames)
+            indexVariableName = 'VPD';
+        else
+            % If VPD is not available, use the first predictor as the index
+            indexVariableName = predictingVariableNames{1};
+        end
+
+        % Add the index data (VPD or first predictor) to the table
+        indexData = app.UITable4.Data.(indexVariableName)(validIdx);
+
+        % Reverse scaling (unscale) for the index data if it was scaled during training
+        if isfield(scalingParams, indexVariableName)
+            indexData = (indexData * scalingParams.(indexVariableName).sigma) + scalingParams.(indexVariableName).mu;
+        end
+
+        predictedDataTable.(indexVariableName) = indexData(1:length(predictions));  % Ensure the size matches predictions
+
+        % Add the TIMESTAMP and other environmental variables to the table
+        timestampData = app.UITable4.Data.TIMESTAMP(validIdx);
+        predictedDataTable.TIMESTAMP = timestampData(1:length(predictions));  % Ensure the size matches predictions
+
+        % Process each predicting variable, scale, and reverse the scaling if necessary
+        for j = 1:length(predictingVariableNames)
+            columnName = predictingVariableNames{j};
+            if ~strcmp(columnName, indexVariableName)  % Skip the index variable
+                sampledEnvData = app.UITable4.Data.(columnName)(validIdx);
+
+                % Apply scaling to the environmental data (if it was scaled during training)
+                if isfield(scalingParams, columnName)
+                    sampledEnvData = (sampledEnvData - scalingParams.(columnName).mu) / scalingParams.(columnName).sigma;
+                end
+
+                % Align the environmental data with the prediction size
+                if size(sampledEnvData, 1) > size(predictions, 1)
+                    sampledEnvData = sampledEnvData(1:size(predictions, 1));  % Truncate to match prediction size
+                elseif size(sampledEnvData, 1) < size(predictions, 1)
+                    sampledEnvData(size(predictions, 1), 1) = NaN;  % Pad with NaNs if shorter
+                end
+
+                % Reverse scaling (unscale) the environmental data
+                if isfield(scalingParams, columnName)
+                    sampledEnvData = (sampledEnvData * scalingParams.(columnName).sigma) + scalingParams.(columnName).mu;
+                end
+
+                % Add the aligned environmental data to the table
+                predictedDataTable.(columnName) = sampledEnvData;
+            end
+        end
+
+        % Reverse scaling for predicted sapflow if it was scaled during training
+        if isfield(scalingParams, 'Sapflow')
+            predictions = (predictions * scalingParams.Sapflow.sigma) + scalingParams.Sapflow.mu;
+        end
+
+        % Add the (unscaled) predictions to the predictedDataTable
+        predictedDataTable.PredictedSapflow = predictions;
+
+        % Save the predicted data to a CSV file in the PredictedData folder
+        outputPath = app.Output.Value; 
+        outputFilename = fullfile(outputPath, 'PredictedData', sprintf('Predicted_%s_%s.csv', modelType, sensorName));
+        writetable(predictedDataTable, outputFilename);
+        app.TextArea.Value = [app.TextArea.Value; ...
+            sprintf('Predicted data saved to %s\n', outputFilename)];
+        scroll(app.TextArea, "bottom");
+        drawnow; % Ensure the TextArea updates immediately
+
+    catch ME
+        % Handle any unexpected errors
+        msgbox(sprintf('An error occurred while saving the predicted data: %s', ME.message), 'Error', 'error');
+        rethrow(ME);
     end
+end
 
 
+
+
+    % Function to clean and train sapflow model
     function cleanAndTrainSapflowModel(app)
         % Clear the TextArea before new output
         app.TextArea.Value = {'Starting the training process...'};
@@ -965,7 +1088,7 @@ methods (Access = public)
                 startDate = app.EffectiveStartDateDatePicker.Value;
                 endDate = app.EffectiveEndDateDatePicker.Value;
                 segmentedData = app.UITable4.Data(app.UITable4.Data.TIMESTAMP >= startDate & app.UITable4.Data.TIMESTAMP <= endDate, :);
-                
+    
                 if isempty(segmentedData)
                     % If no data is found within the user-defined date range, use the full range of the data
                     app.TextArea.Value = [app.TextArea.Value; {'No data available within the selected date range. Using the full data range.'}];
@@ -991,6 +1114,12 @@ methods (Access = public)
             % Initialize timing and progress tracking
             numSensors = length(sensorColumns);
             startTime = tic;
+    
+            % Prepare to store mean and std for feature scaling
+            scalingParams = struct();
+    
+            % Check if the user wants to scale the data
+            shouldScale = app.ScaleDataCheckBox.Value;  % Retrieve the user's choice (checkbox or toggle)
     
             % Check if the data has already been cleaned and stored for these sensors
             data = segmentedData;
@@ -1127,7 +1256,15 @@ methods (Access = public)
                         hourOneHot = oneHotEncodeHour(app, hourData);
                         X = [X, hourOneHot];
                     else
-                        X = [X, columnData];  % Only use real (non-missing) data
+                        if shouldScale
+                            % Apply feature scaling using zscore
+                            [scaledData, mu, sigma] = zscore(columnData); 
+                            scalingParams.(node.Text).mu = mu;  % Save the mean
+                            scalingParams.(node.Text).sigma = sigma;  % Save the std deviation
+                            X = [X, scaledData];  % Append scaled data
+                        else
+                            X = [X, columnData];  % Use unscaled data
+                        end
                     end
                 end
     
@@ -1138,17 +1275,9 @@ methods (Access = public)
     
                 Y = data{validIdx, sensorColumn};
     
-                % Do not fill missing Y values; only use real data for training
-                % (No linear interpolation applied to Y)
-    
                 % Split the data into training and validation sets
                 validationSplit = app.SplitForValidationEditField.Value / 100;
                 cv = cvpartition(length(Y), 'HoldOut', validationSplit);
-    
-                % Ensure that the partition didn't create an empty training or validation set
-                if cv.TrainSize == 0 || cv.TestSize == 0
-                    error('The training or validation set is empty after splitting.');
-                end
     
                 % Set properties for the training and validation data
                 app.XTrain = X(cv.training, :);
@@ -1159,10 +1288,14 @@ methods (Access = public)
                 % Train the selected model type
                 model = trainSelectedModel(app, modelType, size(app.XTrain, 2));
     
-                % Save the trained model along with the predicting variable names
-                saveTrainedModel(app, modelType, sensorName, model, predictingVariableNames);
+                % Save the trained model along with the predicting variable names and scaling params (if scaling is applied)
+                if shouldScale
+                    saveTrainedModel(app, modelType, sensorName, model, predictingVariableNames, scalingParams);
+                else
+                    saveTrainedModel(app, modelType, sensorName, model, predictingVariableNames);  % Without scaling params
+                end
     
-                % Validate the model (no need for validation indices anymore)
+                % Validate the model
                 validateModel(app, modelType, model, sensorName);
     
                 % Update progress and estimated time remaining for training
@@ -1472,8 +1605,8 @@ methods (Access = public)
         % Custom output function to update app.TextArea
         function stop = trainingOutputCallback(info)
             stop = false; % Continue training
-            message = sprintf('Epoch: %d, Iteration: %d, Loss: %.4f\n', ...
-                info.Epoch, info.Iteration, info.TrainingLoss);
+            message = sprintf('Epoch: %d, Loss: %.4f\n', ...
+                info.Epoch, info.TrainingLoss);
             app.TextArea.Value = [app.TextArea.Value; message];
             scroll(app.TextArea, "bottom");
             drawnow; % Update the TextArea in real-time
@@ -1513,8 +1646,8 @@ methods (Access = public)
         % Custom output function to update app.TextArea
         function stop = trainingOutputCallback(info)
             stop = false; % Continue training
-            message = sprintf('Epoch: %d, Iteration: %d, Loss: %.4f\n', ...
-                info.Epoch, info.Iteration, info.TrainingLoss);
+            message = sprintf('Epoch: %d, Loss: %.4f\n', ...
+                info.Epoch,  info.TrainingLoss);
             app.TextArea.Value = [app.TextArea.Value; message];
             scroll(app.TextArea, 'bottom');
             drawnow; % Update the TextArea in real-time
@@ -1555,8 +1688,8 @@ methods (Access = public)
         % Custom output function to update app.TextArea
         function stop = trainingOutputCallback(info)
             stop = false; % Continue training
-            message = sprintf('Epoch: %d, Iteration: %d, Loss: %.4f\n', ...
-                info.Epoch, info.Iteration, info.TrainingLoss);
+            message = sprintf('Epoch: %d, Loss: %.4f\n', ...
+                info.Epoch, info.TrainingLoss);
             app.TextArea.Value = [app.TextArea.Value; message];
             scroll(app.TextArea, 'bottom');
             drawnow; % Update the TextArea in real-time
@@ -1622,16 +1755,37 @@ methods (Access = public)
             % Ensure no negative values in the predictions
             predictions(predictions < 0) = 0;
     
+            % Reshape YValidation and predictions to ensure they are vectors
+            app.YValidation = app.YValidation(:);  % Convert to column vector if not already
+            predictions = predictions(:);          % Convert to column vector if not already
+    
+            % Debugging step: Check the size of the predictions and validation set
+            disp(size(app.YValidation));  % Should be [n, 1] where n is the number of data points
+            disp(size(predictions));      % Should be [n, 1]
+    
+            % Ensure both YValidation and predictions are the same size
+            if length(app.YValidation) ~= length(predictions)
+                error('Mismatch in length between predictions and actual values');
+            end
+    
             % Calculate the prediction error
             predictionError = app.YValidation - predictions;
     
             % Calculate summary statistics
-            mae = mean(abs(predictionError)); % Mean Absolute Error
-            rmse = sqrt(mean(predictionError.^2)); % Root Mean Square Error
+            mae = mean(abs(predictionError));  % Mean Absolute Error (scalar)
+            rmse = sqrt(mean(predictionError.^2));  % Root Mean Square Error (scalar)
     
-            % Display only the MAE and RMSE
+            % Debugging step: Confirm MAE and RMSE are scalar
+            disp(mae);
+            disp(rmse);
+    
+            % Append the new MAE and RMSE to the existing text in TextArea
             summaryText = sprintf('Sensor %s - MAE: %.4f, RMSE: %.4f', sensorName, mae, rmse);
-            app.TextArea.Value = [app.TextArea.Value; {summaryText}];
+            if isempty(app.TextArea.Value)
+                app.TextArea.Value = {summaryText};  % First entry
+            else
+                app.TextArea.Value = [app.TextArea.Value; {summaryText}];  % Append new summary
+            end
             scroll(app.TextArea, 'bottom');
             drawnow; % Ensure the TextArea updates immediately
     
@@ -1645,7 +1799,7 @@ methods (Access = public)
             title(summaryText); % Use the summary text as the title
             legend('show');
             hold off;
-            
+    
         catch ME
             % Handle any unexpected errors
             app.TextArea.Value = [app.TextArea.Value; {sprintf('Error validating model for sensor %s: %s', sensorName, ME.message)}];
@@ -1656,6 +1810,7 @@ methods (Access = public)
     end
 
 
+    
     % Plot segmented data
     function plotSegmentedData(app, data, sensorColumns)
         try
@@ -5732,24 +5887,24 @@ end
             app.GridLayout13.RowSpacing = 3.5;
             app.GridLayout13.Padding = [1.5454531582919 3.5 1.5454531582919 3.5];
 
-            % Create UIAxes5
-            app.UIAxes5 = uiaxes(app.GridLayout13);
-            xlabel(app.UIAxes5, 'Time')
-            ylabel(app.UIAxes5, 'K detail')
-            zlabel(app.UIAxes5, 'Z')
-            app.UIAxes5.TickLength = [0.006 0.025];
-            app.UIAxes5.GridLineStyle = '-.';
-            app.UIAxes5.XColor = [0 0 0];
-            app.UIAxes5.XTick = [0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1];
-            app.UIAxes5.YColor = [0 0 0];
-            app.UIAxes5.YTick = [0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1];
-            app.UIAxes5.ZColor = [0 0 0];
-            app.UIAxes5.LineWidth = 0.25;
-            app.UIAxes5.Box = 'on';
-            app.UIAxes5.XGrid = 'on';
-            app.UIAxes5.YGrid = 'on';
-            app.UIAxes5.Layout.Row = 3;
-            app.UIAxes5.Layout.Column = [9 21];
+            % Create UIAxes3
+            app.UIAxes3 = uiaxes(app.GridLayout13);
+            xlabel(app.UIAxes3, 'Time')
+            ylabel(app.UIAxes3, 'dT Overview')
+            zlabel(app.UIAxes3, 'Z')
+            app.UIAxes3.TickLength = [0.006 0.025];
+            app.UIAxes3.GridLineWidth = 0.25;
+            app.UIAxes3.MinorGridLineWidth = 0.25;
+            app.UIAxes3.GridLineStyle = '-.';
+            app.UIAxes3.XColor = [0 0 0];
+            app.UIAxes3.YColor = [0 0 0];
+            app.UIAxes3.ZColor = [0 0 0];
+            app.UIAxes3.LineWidth = 0.25;
+            app.UIAxes3.Box = 'on';
+            app.UIAxes3.XGrid = 'on';
+            app.UIAxes3.YGrid = 'on';
+            app.UIAxes3.Layout.Row = 3;
+            app.UIAxes3.Layout.Column = [1 8];
 
             % Create UIAxes4
             app.UIAxes4 = uiaxes(app.GridLayout13);
@@ -5771,24 +5926,24 @@ end
             app.UIAxes4.Layout.Column = [1 21];
             app.UIAxes4.PickableParts = 'all';
 
-            % Create UIAxes3
-            app.UIAxes3 = uiaxes(app.GridLayout13);
-            xlabel(app.UIAxes3, 'Time')
-            ylabel(app.UIAxes3, 'dT Overview')
-            zlabel(app.UIAxes3, 'Z')
-            app.UIAxes3.TickLength = [0.006 0.025];
-            app.UIAxes3.GridLineWidth = 0.25;
-            app.UIAxes3.MinorGridLineWidth = 0.25;
-            app.UIAxes3.GridLineStyle = '-.';
-            app.UIAxes3.XColor = [0 0 0];
-            app.UIAxes3.YColor = [0 0 0];
-            app.UIAxes3.ZColor = [0 0 0];
-            app.UIAxes3.LineWidth = 0.25;
-            app.UIAxes3.Box = 'on';
-            app.UIAxes3.XGrid = 'on';
-            app.UIAxes3.YGrid = 'on';
-            app.UIAxes3.Layout.Row = 3;
-            app.UIAxes3.Layout.Column = [1 8];
+            % Create UIAxes5
+            app.UIAxes5 = uiaxes(app.GridLayout13);
+            xlabel(app.UIAxes5, 'Time')
+            ylabel(app.UIAxes5, 'K detail')
+            zlabel(app.UIAxes5, 'Z')
+            app.UIAxes5.TickLength = [0.006 0.025];
+            app.UIAxes5.GridLineStyle = '-.';
+            app.UIAxes5.XColor = [0 0 0];
+            app.UIAxes5.XTick = [0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1];
+            app.UIAxes5.YColor = [0 0 0];
+            app.UIAxes5.YTick = [0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1];
+            app.UIAxes5.ZColor = [0 0 0];
+            app.UIAxes5.LineWidth = 0.25;
+            app.UIAxes5.Box = 'on';
+            app.UIAxes5.XGrid = 'on';
+            app.UIAxes5.YGrid = 'on';
+            app.UIAxes5.Layout.Row = 3;
+            app.UIAxes5.Layout.Column = [9 21];
 
             % Create DeletedTdataButton
             app.DeletedTdataButton = uibutton(app.GridLayout13, 'push');
@@ -6110,7 +6265,7 @@ end
             % Create TextArea
             app.TextArea = uitextarea(app.GridLayout14);
             app.TextArea.FontColor = [1 1 1];
-            app.TextArea.BackgroundColor = [0.149 0.149 0.149];
+            app.TextArea.BackgroundColor = [0.1294 0.1294 0.1294];
             app.TextArea.Layout.Row = 16;
             app.TextArea.Layout.Column = [1 12];
 
@@ -6282,7 +6437,14 @@ end
             app.SplitForValidationEditField.Limits = [0 100];
             app.SplitForValidationEditField.Layout.Row = 9;
             app.SplitForValidationEditField.Layout.Column = 2;
-            app.SplitForValidationEditField.Value = 20;
+            app.SplitForValidationEditField.Value = 25;
+
+            % Create ScaleDataCheckBox
+            app.ScaleDataCheckBox = uicheckbox(app.GridLayout14);
+            app.ScaleDataCheckBox.Text = 'Feature scaling for model training';
+            app.ScaleDataCheckBox.FontColor = [0.0471 0.5686 0.502];
+            app.ScaleDataCheckBox.Layout.Row = 9;
+            app.ScaleDataCheckBox.Layout.Column = [7 8];
 
             % Create GapFillingTab
             app.GapFillingTab = uitab(app.TabGroup);
