@@ -95,9 +95,9 @@ classdef SapFlower < matlab.apps.AppBase
         FinishEditingButton             matlab.ui.control.Button
         UndoDeletionButton              matlab.ui.control.Button
         DeletedTdataButton              matlab.ui.control.Button
-        UIAxes5                         matlab.ui.control.UIAxes
-        UIAxes4                         matlab.ui.control.UIAxes
         UIAxes3                         matlab.ui.control.UIAxes
+        UIAxes4                         matlab.ui.control.UIAxes
+        UIAxes5                         matlab.ui.control.UIAxes
         ModelTrainingTab                matlab.ui.container.Tab
         GridLayout14                    matlab.ui.container.GridLayout
         ScaleDataCheckBox               matlab.ui.control.CheckBox
@@ -563,42 +563,42 @@ methods (Access = public)
             if isempty(sensorData) || ~isvector(sensorData)
                 error('Invalid sensor data: data must be a non-empty vector.');
             end
-            
+    
             if windowSize <= 0 || ~isnumeric(windowSize)
                 error('Invalid window size: it must be a positive numeric value.');
             end
-            
+    
             if thresholdMultiplier <= 0 || ~isnumeric(thresholdMultiplier)
                 error('Invalid threshold multiplier: it must be a positive numeric value.');
             end
-            
+    
             if variationThresholdHigh <= 0 || variationThresholdLow <= 0
                 error('Invalid variation thresholds: both must be positive numeric values.');
             end
-        
+    
             n = length(sensorData);
             outlierMask = false(n, 1);
             highVariationMask = false(n, 1);
             lowVariationMask = false(n, 1);
-        
+    
             % Precompute the overall IQR for the dataset
             Q1 = quantile(sensorData, 0.25);
             Q3 = quantile(sensorData, 0.75);
             IQR = Q3 - Q1;
-        
+    
             % Create a rolling window mean and standard deviation
             windowMeans = movmean(sensorData, windowSize, 'omitnan');
             windowStds = movstd(sensorData, windowSize, 'omitnan');
-        
+    
             % Identify outliers based on window means
             outlierMask(windowMeans < Q1 - thresholdMultiplier * IQR | windowMeans > Q3 + thresholdMultiplier * IQR) = true;
-        
+    
             % Identify high variation windows
             highVariationMask(windowStds > variationThresholdHigh) = true;
-        
+    
             % Identify low variation windows
             lowVariationMask(windowStds < variationThresholdLow) = true;
-        
+    
             % Mark all inconsistent data (outliers, high variation, low variation) as NaN
             cleanedData = sensorData;
             cleanedData(outlierMask | highVariationMask | lowVariationMask) = NaN;
@@ -610,17 +610,17 @@ methods (Access = public)
             if isempty(sensorData) || ~isvector(sensorData)
                 error('Invalid sensor data: data must be a non-empty vector.');
             end
-            
+    
             if minRunLength <= 0 || ~isnumeric(minRunLength)
                 error('Invalid minimum run length: it must be a positive numeric value.');
             end
-        
+    
             % Identify runs of consecutive non-NaN data
             isNonNaN = ~isnan(sensorData);
             runBounds = diff([false; isNonNaN; false]);
             runStartIdx = find(runBounds == 1);
             runEndIdx = find(runBounds == -1) - 1;
-        
+    
             % Remove short runs
             runLengths = runEndIdx - runStartIdx + 1;
             shortRuns = runLengths < minRunLength;
@@ -629,7 +629,7 @@ methods (Access = public)
                 cleanedData(runStartIdx(idx):runEndIdx(idx)) = NaN;
             end
         end
-
+    
         % Main function logic
         % Extract the data from the UITable
         data = app.UITable4.Data;
@@ -641,11 +641,21 @@ methods (Access = public)
         end
     
         % Identify sapflow columns (those starting with 'B1' or 'B2')
-        sensorColumns = find(startsWith(data.Properties.VariableNames, {'B1', 'B2'}));
+        sensorColumns = find(startsWith(data.Properties.VariableNames, {'B1', 'B2'}), 1);
     
         % Check if any sapflow columns were found
         if isempty(sensorColumns)
             disp('Error: No sapflow columns (starting with B1 or B2) found in the data.');
+            return;
+        end
+    
+        % Get the currently selected sensor from the dropdown or another UI component
+        currentSensor = app.YDropDown.Value;  % Assuming YSensorDropDown holds the current sensor selection
+        sensorIdx = find(strcmp(data.Properties.VariableNames, currentSensor));
+    
+        % Check if the selected sensor is valid
+        if isempty(sensorIdx)
+            disp('Error: Selected sensor data is not available.');
             return;
         end
     
@@ -659,8 +669,8 @@ methods (Access = public)
         minRunLength = app.DeleteDataPointsLessThanEditField.Value;
     
         % Pre-filter sapflow data
-        sensorData = data{:, sensorColumns(1)}; % Get the first sensor column
-        
+        sensorData = data{:, sensorIdx}; % Use the current sensor column based on user selection
+    
         % Check if sensor data is empty
         if isempty(sensorData)
             disp('Error: Sensor data is empty.');
@@ -703,10 +713,11 @@ methods (Access = public)
     
         xlabel('Time');
         ylabel('Sapflow');
-        title(sprintf('Outliers and Cleaned Data for Sensor %s', data.Properties.VariableNames{sensorColumns(1)}));
+        title(sprintf('Outliers and Cleaned Data for Sensor %s', currentSensor));
         legend('show');
         hold off;
     end
+
 
 end
 
@@ -1714,7 +1725,7 @@ end
     function model = trainRandomForestModel(app)
     
         % Train Random Forest Model
-        model = fitrensemble(app.XTrain, app.YTrain, 'Method', 'Bag', 'NumLearningCycles', 200, 'Learners', 'tree');
+        model = fitrensemble(app.XTrain, app.YTrain, 'Method', 'Bag', 'NumLearningCycles', app.EpochForTrainingEditField.Value, 'Learners', 'tree');
     
         disp('Random Forest model trained successfully.');
     end
@@ -5887,24 +5898,24 @@ end
             app.GridLayout13.RowSpacing = 3.5;
             app.GridLayout13.Padding = [1.5454531582919 3.5 1.5454531582919 3.5];
 
-            % Create UIAxes3
-            app.UIAxes3 = uiaxes(app.GridLayout13);
-            xlabel(app.UIAxes3, 'Time')
-            ylabel(app.UIAxes3, 'dT Overview')
-            zlabel(app.UIAxes3, 'Z')
-            app.UIAxes3.TickLength = [0.006 0.025];
-            app.UIAxes3.GridLineWidth = 0.25;
-            app.UIAxes3.MinorGridLineWidth = 0.25;
-            app.UIAxes3.GridLineStyle = '-.';
-            app.UIAxes3.XColor = [0 0 0];
-            app.UIAxes3.YColor = [0 0 0];
-            app.UIAxes3.ZColor = [0 0 0];
-            app.UIAxes3.LineWidth = 0.25;
-            app.UIAxes3.Box = 'on';
-            app.UIAxes3.XGrid = 'on';
-            app.UIAxes3.YGrid = 'on';
-            app.UIAxes3.Layout.Row = 3;
-            app.UIAxes3.Layout.Column = [1 8];
+            % Create UIAxes5
+            app.UIAxes5 = uiaxes(app.GridLayout13);
+            xlabel(app.UIAxes5, 'Time')
+            ylabel(app.UIAxes5, 'K detail')
+            zlabel(app.UIAxes5, 'Z')
+            app.UIAxes5.TickLength = [0.006 0.025];
+            app.UIAxes5.GridLineStyle = '-.';
+            app.UIAxes5.XColor = [0 0 0];
+            app.UIAxes5.XTick = [0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1];
+            app.UIAxes5.YColor = [0 0 0];
+            app.UIAxes5.YTick = [0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1];
+            app.UIAxes5.ZColor = [0 0 0];
+            app.UIAxes5.LineWidth = 0.25;
+            app.UIAxes5.Box = 'on';
+            app.UIAxes5.XGrid = 'on';
+            app.UIAxes5.YGrid = 'on';
+            app.UIAxes5.Layout.Row = 3;
+            app.UIAxes5.Layout.Column = [9 21];
 
             % Create UIAxes4
             app.UIAxes4 = uiaxes(app.GridLayout13);
@@ -5926,24 +5937,24 @@ end
             app.UIAxes4.Layout.Column = [1 21];
             app.UIAxes4.PickableParts = 'all';
 
-            % Create UIAxes5
-            app.UIAxes5 = uiaxes(app.GridLayout13);
-            xlabel(app.UIAxes5, 'Time')
-            ylabel(app.UIAxes5, 'K detail')
-            zlabel(app.UIAxes5, 'Z')
-            app.UIAxes5.TickLength = [0.006 0.025];
-            app.UIAxes5.GridLineStyle = '-.';
-            app.UIAxes5.XColor = [0 0 0];
-            app.UIAxes5.XTick = [0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1];
-            app.UIAxes5.YColor = [0 0 0];
-            app.UIAxes5.YTick = [0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1];
-            app.UIAxes5.ZColor = [0 0 0];
-            app.UIAxes5.LineWidth = 0.25;
-            app.UIAxes5.Box = 'on';
-            app.UIAxes5.XGrid = 'on';
-            app.UIAxes5.YGrid = 'on';
-            app.UIAxes5.Layout.Row = 3;
-            app.UIAxes5.Layout.Column = [9 21];
+            % Create UIAxes3
+            app.UIAxes3 = uiaxes(app.GridLayout13);
+            xlabel(app.UIAxes3, 'Time')
+            ylabel(app.UIAxes3, 'dT Overview')
+            zlabel(app.UIAxes3, 'Z')
+            app.UIAxes3.TickLength = [0.006 0.025];
+            app.UIAxes3.GridLineWidth = 0.25;
+            app.UIAxes3.MinorGridLineWidth = 0.25;
+            app.UIAxes3.GridLineStyle = '-.';
+            app.UIAxes3.XColor = [0 0 0];
+            app.UIAxes3.YColor = [0 0 0];
+            app.UIAxes3.ZColor = [0 0 0];
+            app.UIAxes3.LineWidth = 0.25;
+            app.UIAxes3.Box = 'on';
+            app.UIAxes3.XGrid = 'on';
+            app.UIAxes3.YGrid = 'on';
+            app.UIAxes3.Layout.Row = 3;
+            app.UIAxes3.Layout.Column = [1 8];
 
             % Create DeletedTdataButton
             app.DeletedTdataButton = uibutton(app.GridLayout13, 'push');
