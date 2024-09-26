@@ -8,7 +8,7 @@ Please note that functions for data smoothing have been disabled and will be mad
 
 ![Screenshot 2024-09-10 115039](https://github.com/user-attachments/assets/df37fe8f-e1f5-4b8c-94de-46e184c92a58)
 
-![Screenshot 2024-09-10 115111](https://github.com/user-attachments/assets/91ffe493-26cd-4687-a00b-b76e58d1c780)
+![Screenshot 2024-09-21 104513](https://github.com/user-attachments/assets/b930dd08-ceaa-4cae-bcab-69d4a4362224)
 
 ![Screenshot 2024-09-04 103308](https://github.com/user-attachments/assets/f72669a2-0d5a-4cc1-87e8-27f60e3be848)
 
