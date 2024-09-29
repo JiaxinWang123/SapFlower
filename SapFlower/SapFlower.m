@@ -881,188 +881,101 @@ methods (Access = public)
     end
 
 
-    % % Function to save predicted data with VPD index
-    % function savePredictedDataWithVPDIndex(app, predictions, predictingVariableNames, validIdx, sensorName, modelType)
-    %     try
-    %         % Check if output path is valid
-    %         checkOutputPath(app);
-    % 
-    %         % Convert predictions to a column vector if necessary
-    %         if isrow(predictions)
-    %             predictions = predictions';
-    %         end
-    % 
-    %         % Initialize the table with the predictions
-    %         predictedDataTable = table(predictions, 'VariableNames', {'PredictedSapflow'});
-    % 
-    %         % Load the trained model and check for scaling parameters
-    %         modelData = loadTrainedModel(app, modelType, sensorName);
-    % 
-    %         if isfield(modelData, 'scalingParams')
-    %             scalingParams = modelData.scalingParams;  % If scaling was used during training
-    %         else
-    %             scalingParams = struct();  % No scaling was used
-    %         end
-    % 
-    %         % Check if VPD is in the predicting variables
-    %         if ismember('VPD', predictingVariableNames)
-    %             indexVariableName = 'VPD';
-    %         else
-    %             % If VPD is not available, use the first predictor as the index
-    %             indexVariableName = predictingVariableNames{1};
-    %         end
-    % 
-    %         % Add the index data (VPD or first predictor) to the table
-    %         indexData = app.UITable4.Data.(indexVariableName)(validIdx);
-    % 
-    %         % Reverse scaling (unscale) for the index data if it was scaled during training
-    %         if isfield(scalingParams, indexVariableName)
-    %             indexData = (indexData * scalingParams.(indexVariableName).sigma) + scalingParams.(indexVariableName).mu;
-    %         end
-    % 
-    %         predictedDataTable.(indexVariableName) = indexData(1:length(predictions));  % Ensure the size matches predictions
-    % 
-    %         % Add the TIMESTAMP and other environmental variables to the table
-    %         timestampData = app.UITable4.Data.TIMESTAMP(validIdx);
-    %         predictedDataTable.TIMESTAMP = timestampData(1:length(predictions));  % Ensure the size matches predictions
-    % 
-    %         % Process each predicting variable, and reverse the scaling if necessary
-    %         for j = 1:length(predictingVariableNames)
-    %             columnName = predictingVariableNames{j};
-    %             if ~strcmp(columnName, indexVariableName)  % Skip the index variable
-    %                 sampledEnvData = app.UITable4.Data.(columnName)(validIdx);
-    % 
-    %                 % Reverse scaling (unscale) the environmental data if it was scaled during training
-    %                 if isfield(scalingParams, columnName)
-    %                     sampledEnvData = (sampledEnvData * scalingParams.(columnName).sigma) + scalingParams.(columnName).mu;
-    %                 end
-    % 
-    %                 % Align the environmental data with the prediction size
-    %                 if size(sampledEnvData, 1) > size(predictions, 1)
-    %                     sampledEnvData = sampledEnvData(1:size(predictions, 1));  % Truncate to match prediction size
-    %                 elseif size(sampledEnvData, 1) < size(predictions, 1)
-    %                     sampledEnvData(size(predictions, 1), 1) = NaN;  % Pad with NaNs if shorter
-    %                 end
-    % 
-    %                 % Add the aligned environmental data to the table
-    %                 predictedDataTable.(columnName) = sampledEnvData;
-    %             end
-    %         end
-    % 
-    %         % Save the predicted data to a CSV file in the PredictedData folder
-    %         outputPath = app.Output.Value; 
-    %         outputFilename = fullfile(outputPath, 'PredictedData', sprintf('Predicted_%s_%s.csv', modelType, sensorName));
-    %         writetable(predictedDataTable, outputFilename);
-    %         app.TextArea.Value = [app.TextArea.Value; ...
-    %             sprintf('Predicted data saved to %s\n', outputFilename)];
-    %         scroll(app.TextArea, "bottom");
-    %         drawnow; % Ensure the TextArea updates immediately
-    % 
-    %     catch ME
-    %         % Handle any unexpected errors
-    %         msgbox(sprintf('An error occurred while saving the predicted data: %s', ME.message), 'Error', 'error');
-    %         rethrow(ME);
-    %     end
-    % end
-
-
-function savePredictedDataWithVPDIndex(app, predictions, predictingVariableNames, validIdx, sensorName, modelType)
-    try
-        % Check if output path is valid
-        checkOutputPath(app);
-
-        % Convert predictions to a column vector if necessary
-        if isrow(predictions)
-            predictions = predictions';
-        end
-
-        % Initialize the table with the predictions
-        predictedDataTable = table(predictions, 'VariableNames', {'PredictedSapflow'});
-
-        % Load the trained model and check for scaling parameters
-        modelData = loadTrainedModel(app, modelType, sensorName);
-        
-        if isfield(modelData, 'scalingParams')
-            scalingParams = modelData.scalingParams;  % If scaling was used during training
-        else
-            scalingParams = struct();  % No scaling was used
-        end
-
-        % Check if VPD is in the predicting variables
-        if ismember('VPD', predictingVariableNames)
-            indexVariableName = 'VPD';
-        else
-            % If VPD is not available, use the first predictor as the index
-            indexVariableName = predictingVariableNames{1};
-        end
-
-        % Add the index data (VPD or first predictor) to the table
-        indexData = app.UITable4.Data.(indexVariableName)(validIdx);
-
-        % Reverse scaling (unscale) for the index data if it was scaled during training
-        if isfield(scalingParams, indexVariableName)
-            indexData = (indexData * scalingParams.(indexVariableName).sigma) + scalingParams.(indexVariableName).mu;
-        end
-
-        predictedDataTable.(indexVariableName) = indexData(1:length(predictions));  % Ensure the size matches predictions
-
-        % Add the TIMESTAMP and other environmental variables to the table
-        timestampData = app.UITable4.Data.TIMESTAMP(validIdx);
-        predictedDataTable.TIMESTAMP = timestampData(1:length(predictions));  % Ensure the size matches predictions
-
-        % Process each predicting variable, scale, and reverse the scaling if necessary
-        for j = 1:length(predictingVariableNames)
-            columnName = predictingVariableNames{j};
-            if ~strcmp(columnName, indexVariableName)  % Skip the index variable
-                sampledEnvData = app.UITable4.Data.(columnName)(validIdx);
-
-                % Apply scaling to the environmental data (if it was scaled during training)
-                if isfield(scalingParams, columnName)
-                    sampledEnvData = (sampledEnvData - scalingParams.(columnName).mu) / scalingParams.(columnName).sigma;
-                end
-
-                % Align the environmental data with the prediction size
-                if size(sampledEnvData, 1) > size(predictions, 1)
-                    sampledEnvData = sampledEnvData(1:size(predictions, 1));  % Truncate to match prediction size
-                elseif size(sampledEnvData, 1) < size(predictions, 1)
-                    sampledEnvData(size(predictions, 1), 1) = NaN;  % Pad with NaNs if shorter
-                end
-
-                % Reverse scaling (unscale) the environmental data
-                if isfield(scalingParams, columnName)
-                    sampledEnvData = (sampledEnvData * scalingParams.(columnName).sigma) + scalingParams.(columnName).mu;
-                end
-
-                % Add the aligned environmental data to the table
-                predictedDataTable.(columnName) = sampledEnvData;
+    function savePredictedDataWithVPDIndex(app, predictions, predictingVariableNames, validIdx, sensorName, modelType)
+        try
+            % Check if output path is valid
+            checkOutputPath(app);
+    
+            % Convert predictions to a column vector if necessary
+            if isrow(predictions)
+                predictions = predictions';
             end
+    
+            % Initialize the table with the predictions
+            predictedDataTable = table(predictions, 'VariableNames', {'PredictedSapflow'});
+    
+            % Load the trained model and check for scaling parameters
+            modelData = loadTrainedModel(app, modelType, sensorName);
+            
+            if isfield(modelData, 'scalingParams')
+                scalingParams = modelData.scalingParams;  % If scaling was used during training
+            else
+                scalingParams = struct();  % No scaling was used
+            end
+    
+            % Check if VPD is in the predicting variables
+            if ismember('VPD', predictingVariableNames)
+                indexVariableName = 'VPD';
+            else
+                % If VPD is not available, use the first predictor as the index
+                indexVariableName = predictingVariableNames{1};
+            end
+    
+            % Add the index data (VPD or first predictor) to the table
+            indexData = app.UITable4.Data.(indexVariableName)(validIdx);
+    
+            % Reverse scaling (unscale) for the index data if it was scaled during training
+            if isfield(scalingParams, indexVariableName)
+                indexData = (indexData * scalingParams.(indexVariableName).sigma) + scalingParams.(indexVariableName).mu;
+            end
+    
+            predictedDataTable.(indexVariableName) = indexData(1:length(predictions));  % Ensure the size matches predictions
+    
+            % Add the TIMESTAMP and other environmental variables to the table
+            timestampData = app.UITable4.Data.TIMESTAMP(validIdx);
+            predictedDataTable.TIMESTAMP = timestampData(1:length(predictions));  % Ensure the size matches predictions
+    
+            % Process each predicting variable, scale, and reverse the scaling if necessary
+            for j = 1:length(predictingVariableNames)
+                columnName = predictingVariableNames{j};
+                if ~strcmp(columnName, indexVariableName)  % Skip the index variable
+                    sampledEnvData = app.UITable4.Data.(columnName)(validIdx);
+    
+                    % Apply scaling to the environmental data (if it was scaled during training)
+                    if isfield(scalingParams, columnName)
+                        sampledEnvData = (sampledEnvData - scalingParams.(columnName).mu) / scalingParams.(columnName).sigma;
+                    end
+    
+                    % Align the environmental data with the prediction size
+                    if size(sampledEnvData, 1) > size(predictions, 1)
+                        sampledEnvData = sampledEnvData(1:size(predictions, 1));  % Truncate to match prediction size
+                    elseif size(sampledEnvData, 1) < size(predictions, 1)
+                        sampledEnvData(size(predictions, 1), 1) = NaN;  % Pad with NaNs if shorter
+                    end
+    
+                    % Reverse scaling (unscale) the environmental data
+                    if isfield(scalingParams, columnName)
+                        sampledEnvData = (sampledEnvData * scalingParams.(columnName).sigma) + scalingParams.(columnName).mu;
+                    end
+    
+                    % Add the aligned environmental data to the table
+                    predictedDataTable.(columnName) = sampledEnvData;
+                end
+            end
+    
+            % Reverse scaling for predicted sapflow if it was scaled during training
+            if isfield(scalingParams, 'Sapflow')
+                predictions = (predictions * scalingParams.Sapflow.sigma) + scalingParams.Sapflow.mu;
+            end
+    
+            % Add the (unscaled) predictions to the predictedDataTable
+            predictedDataTable.PredictedSapflow = predictions;
+    
+            % Save the predicted data to a CSV file in the PredictedData folder
+            outputPath = app.Output.Value; 
+            outputFilename = fullfile(outputPath, 'PredictedData', sprintf('Predicted_%s_%s.csv', modelType, sensorName));
+            writetable(predictedDataTable, outputFilename);
+            app.TextArea.Value = [app.TextArea.Value; ...
+                sprintf('Predicted data saved to %s\n', outputFilename)];
+            scroll(app.TextArea, "bottom");
+            drawnow; % Ensure the TextArea updates immediately
+    
+        catch ME
+            % Handle any unexpected errors
+            msgbox(sprintf('An error occurred while saving the predicted data: %s', ME.message), 'Error', 'error');
+            rethrow(ME);
         end
-
-        % Reverse scaling for predicted sapflow if it was scaled during training
-        if isfield(scalingParams, 'Sapflow')
-            predictions = (predictions * scalingParams.Sapflow.sigma) + scalingParams.Sapflow.mu;
-        end
-
-        % Add the (unscaled) predictions to the predictedDataTable
-        predictedDataTable.PredictedSapflow = predictions;
-
-        % Save the predicted data to a CSV file in the PredictedData folder
-        outputPath = app.Output.Value; 
-        outputFilename = fullfile(outputPath, 'PredictedData', sprintf('Predicted_%s_%s.csv', modelType, sensorName));
-        writetable(predictedDataTable, outputFilename);
-        app.TextArea.Value = [app.TextArea.Value; ...
-            sprintf('Predicted data saved to %s\n', outputFilename)];
-        scroll(app.TextArea, "bottom");
-        drawnow; % Ensure the TextArea updates immediately
-
-    catch ME
-        % Handle any unexpected errors
-        msgbox(sprintf('An error occurred while saving the predicted data: %s', ME.message), 'Error', 'error');
-        rethrow(ME);
     end
-end
-
-
 
 
     % Function to clean and train sapflow model
