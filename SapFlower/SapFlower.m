@@ -95,9 +95,9 @@ classdef SapFlower < matlab.apps.AppBase
         FinishEditingButton             matlab.ui.control.Button
         UndoDeletionButton              matlab.ui.control.Button
         DeletedTdataButton              matlab.ui.control.Button
-        UIAxes3                         matlab.ui.control.UIAxes
-        UIAxes4                         matlab.ui.control.UIAxes
         UIAxes5                         matlab.ui.control.UIAxes
+        UIAxes4                         matlab.ui.control.UIAxes
+        UIAxes3                         matlab.ui.control.UIAxes
         ModelTrainingTab                matlab.ui.container.Tab
         GridLayout14                    matlab.ui.container.GridLayout
         ScaleDataCheckBox               matlab.ui.control.CheckBox
@@ -165,7 +165,9 @@ classdef SapFlower < matlab.apps.AppBase
         OutputPathButton                matlab.ui.control.Button
         Output                          matlab.ui.control.EditField
         GapFillingTab                   matlab.ui.container.Tab
-        GridLayout15                    matlab.ui.container.GridLayout
+        GridLayout17                    matlab.ui.container.GridLayout
+        ExportTypeDropDown              matlab.ui.control.DropDown
+        ExportDailyWaterUse             matlab.ui.control.Button
         TextArea_2                      matlab.ui.control.TextArea
         ExportFvaluesButton             matlab.ui.control.Button
         ExportKvaluesButton             matlab.ui.control.Button
@@ -178,6 +180,12 @@ classdef SapFlower < matlab.apps.AppBase
         UIAxes6_2                       matlab.ui.control.UIAxes
         ViewGapFilledDataTab            matlab.ui.container.Tab
         UIAxes6_3                       matlab.ui.control.UIAxes
+        ViewKvaluesTab                  matlab.ui.container.Tab
+        UIAxes6_5                       matlab.ui.control.UIAxes
+        ViewFvaluesTab                  matlab.ui.container.Tab
+        UIAxes6_6                       matlab.ui.control.UIAxes
+        ViewDailyHourlySapFluxDensityTab  matlab.ui.container.Tab
+        UIAxes6_7                       matlab.ui.control.UIAxes
         Tree                            matlab.ui.container.CheckBoxTree
         Node                            matlab.ui.container.TreeNode
         Node_2                          matlab.ui.container.TreeNode
@@ -739,6 +747,18 @@ methods (Access = public)
             loadedModel = load(modelFile);
             net = loadedModel.net;
             
+            % Ask the user for the prediction horizon
+            answer = app.WindowSizepointsEditField.Value;
+            if isempty(answer)
+                uialert(app.UIFigure, 'Prediction horizon not specified.', 'Error');
+                return;
+            end
+            horizon = str2double(answer{1});
+            if isnan(horizon) || horizon <= 0
+                uialert(app.UIFigure, 'Invalid prediction horizon specified.', 'Error');
+                return;
+            end
+            
             % Use the current data or load new data
             useCurrentData = uiconfirm(app.UIFigure, 'Use current data for prediction?', 'Data Selection', ...
                 'Options', {'Yes', 'No'}, 'DefaultOption', 1);
@@ -766,17 +786,17 @@ methods (Access = public)
             for node = selectedEnvVars'
                 X = [X, data.(node.Text)];
             end
-            X = X';
+            X = X';  % Transpose X for prediction
             
-            % Make predictions
-            predictions = predict(net, X)';
+            % Make predictions based on the model and horizon
+            predictions = predict(net, X, horizon)';
             
             % Display predictions
             figure;
             plot(data.TIMESTAMP, predictions, 'r--', 'DisplayName', 'Predicted Data');
             xlabel('Time');
             ylabel('Sapflow');
-            title('Predicted Sapflow Data');
+            title(sprintf('Predicted Sapflow Data for %d Steps Ahead', horizon));
             legend('show');
             
             % Save or export the prediction results
@@ -787,6 +807,7 @@ methods (Access = public)
             uialert(app.UIFigure, ['Error during prediction: ', ME.message], 'Error');
         end
     end
+
 
     function exportPredictions(app, data, predictions)
         try
@@ -1840,12 +1861,21 @@ methods (Access = public)
         end
     end
    
-    function [predictions, predictingVariableNames, validIdx] = makePredictions(app, modelType, sensorName)
+    function [predictions, predictingVariableNames, validIdx] = makePredictions(app, modelType, sensorName, scaleData)
         try
+            % Start timing
+            tic;
+            
             % Load the trained model and predicting variables
             modelData = loadTrainedModel(app, modelType, sensorName);
             model = modelData.model;  % Access the model field
             predictingVariableNames = modelData.predictingVariables;
+            
+            % Load scaling parameters if scaling is enabled
+            if scaleData
+                scalingParams = modelData.scalingParams;
+            end
+
     
             % Initialize validIdx to true
             validIdx = true(height(app.UITable4.Data), 1);
@@ -1854,7 +1884,9 @@ methods (Access = public)
             for j = 1:length(predictingVariableNames)
                 columnName = predictingVariableNames{j};
                 columnData = app.UITable4.Data.(columnName);
-    
+                disp('Predicting Variables:');
+                disp(predictingVariableNames);
+
                 if isdatetime(columnData)
                     % Skip NaN check for datetime columns
                     continue;
@@ -1881,7 +1913,16 @@ methods (Access = public)
                     hourOneHot = oneHotEncodeHour(app, hourData);
                     X = [X, hourOneHot];
                 else
+                    % Fill missing values
                     columnData = fillmissing(columnData, 'linear');
+                    
+                    if scaleData
+                        mu = scalingParams.(columnName).mu;
+                        sigma = scalingParams.(columnName).sigma;
+                        columnData = (columnData - mu) ./ sigma;
+                    end
+                    
+                    % Append the data (scaled or unscaled) to X
                     X = [X, columnData];
                 end
             end
@@ -1916,9 +1957,11 @@ methods (Access = public)
             % Ensure no negative values in the predictions
             predictions(predictions < 0) = 0;
     
+            % Stop timing and get elapsed time
+            elapsedTime = toc;
             % Update the TextArea with the prediction completion message
             app.TextArea.Value = [app.TextArea.Value; ...
-                sprintf('Predictions completed for sensor %s using %s model.\n', sensorName, modelType)];
+                sprintf('Predictions completed for sensor %s using %s model. Time taken: %.2f seconds.\n', sensorName, modelType, elapsedTime)];
             scroll(app.TextArea, 'bottom');
             drawnow; % Ensure the TextArea updates immediately
     
@@ -1987,6 +2030,9 @@ methods (Access = public)
     
         modelType = checkedModelNodes(1).Text;
     
+        % Check if scaling is enabled
+        scaleData = app.ScaleDataCheckBox.Value;  % True if checked, false otherwise
+    
         % Get the checked sensors from the app
         checkedSensorNodes = app.SensorsTree.CheckedNodes;
     
@@ -1998,22 +2044,23 @@ methods (Access = public)
         % Iterate over each selected sensor and make predictions
         for i = 1:length(checkedSensorNodes)
             sensorName = checkedSensorNodes(i).Text;
-            
+    
             % Skip the top-level node 'Sensors' if it's included
             if strcmp(sensorName, 'Sensors')
                 continue;
             end
-            
+    
             % Each sensor's data and model should be handled separately
             try
-                [predictions, predictingVariableNames, validIdx] = makePredictions(app, modelType, sensorName);
-                
+                % Pass the scaleData flag to makePredictions
+                [predictions, predictingVariableNames, validIdx] = makePredictions(app, modelType, sensorName, scaleData);
+    
                 % Save the predicted data along with environmental variables
                 savePredictedDataWithVPDIndex(app, predictions, predictingVariableNames, validIdx, sensorName, modelType);
-
+    
                 % Update the list of predicted sensors and update the tree
                 updateTrainedAndPredictedSensors(app, sensorName);
-
+    
                 % Plot predictions for the current sensor
                 figure;
                 plot(predictions, 'DisplayName', sprintf('Predicted for %s', sensorName));
@@ -2022,7 +2069,7 @@ methods (Access = public)
                 title(sprintf('Predicted Sapflow for Sensor %s using %s model', sensorName, modelType));
                 legend('show');
                 grid on; % Add a grid for better visualization
-                
+    
             catch ME
                 % Handle any errors that occur during prediction
                 errorMessage = sprintf('Error making predictions for sensor %s: %s', sensorName, ME.message);
@@ -2064,41 +2111,37 @@ end
 
         function exportFValuesAfterGapFill(app)
             try
-                % Check if the user has defined an output path
+                % Step 1: Check if a valid output path is defined
                 outputPath = app.Output.Value;
-                
-                % Ensure the output path is valid
                 if isempty(outputPath) || ~isfolder(outputPath)
                     errordlg('Please set a valid output path in the Output field.', 'Invalid Output Path');
                     return;
                 end
                 
-                % Create a folder called "ExportedFvalue" within the defined output path
+                % Step 2: Create export folder for F-values if not already existing
                 exportFolderPath = fullfile(outputPath, 'ExportedFvalue');
                 if ~isfolder(exportFolderPath)
                     mkdir(exportFolderPath);
                 end
                 
-                % Generate a timestamp to append to the filename
+                % Step 3: Generate output filename with timestamp
                 timestamp3 = datestr(now, 'yyyymmdd_HHMMSS');
-                
-                % Define the filename with the timestamp for F-values
                 fOutputFilename = fullfile(exportFolderPath, sprintf('PredictedFValues_%s.csv', timestamp3));
                 
                 app.startWait('Calculating and exporting F-values after gap-fill...');
                 
-                % Prompt the user to provide coefficients a and b, with default values
+                % Step 4: Prompt user for coefficients 'a' and 'b'
                 prompt = {'Enter the value for coefficient a:', 'Enter the value for coefficient b:'};
                 dlgtitle = 'Input Coefficients';
                 dims = [1 50];
                 definput = {'0.11899', '1.231'};
                 answer = inputdlg(prompt, dlgtitle, dims, definput);
                 if isempty(answer)
-                    app.endWait(); % End the wait if the user cancels
-                    return; % If the user cancels the input dialog, exit the function
+                    app.endWait();
+                    return; % Exit if the user cancels the input dialog
                 end
                 
-                % Convert the user input to numerical values
+                % Convert user input to numerical values
                 a = str2double(answer{1});
                 b = str2double(answer{2});
                 if isnan(a) || isnan(b)
@@ -2107,184 +2150,192 @@ end
                     return;
                 end
                 
-                % Initialize a table to store the combined data with environmental variables
-                combinedFData = table();
+                % Step 5: Prepare environmental data and timestamp
+                combinedFData = prepareEnvironmentalData(app);
                 
-                % Extract environmental variables and timestamp from gap-filled data
-                timestampData = app.GapFilledData.TIMESTAMP;
-                app.DOY = day(timestampData, 'dayofyear'); % Day of Year
-                
-                % Calculate Time of Day in the format HHMM (e.g., 730 for 7:30 AM)
-                hourData = hour(timestampData);
-                minuteData = minute(timestampData);
-                app.tod = hourData * 100 + minuteData; % Convert to HHMM format
-                
-                app.VPD = app.GapFilledData.VPD;
-                app.par = app.GapFilledData.PAR_Den_Avg;
-                
-                % Add TIMESTAMP and environmental variables to the combined data table
-                combinedFData.TIMESTAMP = timestampData;
-                combinedFData.DOY = app.DOY;
-                combinedFData.TOD = app.tod;
-                combinedFData.VPD = app.VPD;
-                combinedFData.PAR = app.par;
-                
-                % Iterate through all checked sapflow sensors
+                % Step 6: Iterate through all checked sapflow sensors and compute F-values
                 checkedNodes = app.Tree.CheckedNodes;
                 validSensorNodes = checkedNodes(~strcmp({checkedNodes.Text}, 'Sensors'));
                 
+                % Clear the previous plot before re-plotting
+                cla(app.UIAxes6_6, 'reset'); % clear and reset the axes
+
                 for i = 1:numel(validSensorNodes)
                     sensorName = validSensorNodes(i).Text;
-                
-                    % Ensure that the gap-filled data is present
+                    
+                    % Ensure gap-filled data is available
                     if ismember(sensorName, app.GapFilledData.Properties.VariableNames)
-                        % Get the gap-filled sapflow data for this sensor
-                        app.sapflow = app.GapFilledData.(sensorName);
-                
-                        % Create a new SapflowProcessor for this sensor
-                        sensorProcessor = SapflowProcessor(app.DOY, app.tod, app.VPD, app.par, app.sapflow, app.Config);
-                
-                        % Compute K-values
-                        sensorProcessor.compute();
-                        k_values = sensorProcessor.ka_line;
-                
-                        % Transpose k_values to make it a column vector
-                        k_values = k_values';
-                
-                        % Calculate F-values using the formula F = a * (K)^b
-                        f_values = a * (k_values).^b;
-                
-                        % Create a temporary table with F-values
-                        sensorFData = table(f_values, 'VariableNames', {['F_', sensorName]});
-                
-                        % Append the F-value column to the combinedData table
-                        combinedFData = [combinedFData, sensorFData];
+                        % Compute and append F-values
+                        combinedFData = calculateAndAppendFValues(app, sensorName, combinedFData, a, b);
                     else
-                        app.TextArea_2.Value = [app.TextArea_2.Value; {sprintf('No gap-filled data available for sensor %s.', sensorName)}];
-                        scroll(app.TextArea_2, "bottom");
+                        % Log missing data
+                        logMessage(app, sprintf('No gap-filled data available for sensor %s.', sensorName));
                     end
                 end
                 
-                % Attempt to write the table to the specified file
-                try
-                    writetable(combinedFData, fOutputFilename);
-                    app.TextArea_2.Value = [app.TextArea_2.Value; {['F-values exported successfully to ', fOutputFilename]}];
-                    scroll(app.TextArea_2, "bottom");
-                catch err
-                    errordlg(err.message, 'Export failed');
-                    app.TextArea_2.Value = [app.TextArea_2.Value; {['Error exporting F-values: ', err.message]}];
-                    scroll(app.TextArea_2, "bottom");
-                end
+                % Step 7: Export the combined F-value data to CSV
+                exportFCombinedDataToCSV(app, combinedFData, fOutputFilename);
                 
             catch ME
+                % Handle errors and display them
                 errordlg(ME.message, 'Error');
-                app.TextArea_2.Value = [app.TextArea_2.Value; {['An error occurred: ', ME.message]}];
-                scroll(app.TextArea_2, "bottom");
+                logMessage(app, sprintf('An error occurred: %s', ME.message));
             end
             
             app.endWait();
+        end
+        
+        % Helper function: Calculate, append F-values for a sensor, and plot them
+        function combinedData = calculateAndAppendFValues(app, sensorName, combinedData, a, b)
+            % Extract gap-filled sapflow data for the sensor
+            app.sapflow = app.GapFilledData.(sensorName);
+            
+            % Create a new SapflowProcessor and compute K-values
+            sensorProcessor = SapflowProcessor(app.DOY, app.tod, app.VPD, app.par, app.sapflow, app.Config);
+            sensorProcessor.compute();
+            
+            % Retrieve K-values and compute F-values using the formula F = a * (K)^b
+            k_values = sensorProcessor.ka_line';
+            f_values = a * (k_values).^b;
+            
+            % Append F-values as a new column in the combinedData table
+            combinedData = [combinedData, table(f_values, 'VariableNames', {['F_', sensorName]})];
+            
+            % Plot the F-values on app.UIAxes6_6
+            hold(app.UIAxes6_6, 'on');
+            plot(app.UIAxes6_6, combinedData.TIMESTAMP, f_values, ...
+                 'LineWidth', 1.5, 'DisplayName', strrep(sensorName, '_', '\_'));
+            xlabel(app.UIAxes6_6, 'Timestamp');
+            ylabel(app.UIAxes6_6, 'F-values');
+            title(app.UIAxes6_6, 'F-values for Sensors');
+            legend(app.UIAxes6_6, 'show');
+            hold(app.UIAxes6_6, 'off');
         end
 
 
         function exportKValuesAfterGapFill(app)
             try
-                % Check if the user has defined an output path
+                % Step 1: Check if a valid output path is defined
                 outputPath = app.Output.Value;
-                
-                % Ensure the output path is valid
                 if isempty(outputPath) || ~isfolder(outputPath)
                     errordlg('Please set a valid output path in the Output field.', 'Invalid Output Path');
                     return;
                 end
                 
-                % Create a folder called "ExportedKvalue" within the defined output path
+                % Step 2: Create export folder for K-values if not already existing
                 exportFolderPath = fullfile(outputPath, 'ExportedKvalue');
                 if ~isfolder(exportFolderPath)
                     mkdir(exportFolderPath);
                 end
                 
-                % Generate a timestamp to append to the filename
+                % Step 3: Generate output filename with timestamp
                 timestamp2 = datestr(now, 'yyyymmdd_HHMMSS');
-                
-                % Define the filename with the timestamp
                 outputFilename = fullfile(exportFolderPath, sprintf('PredictedKValues_%s.csv', timestamp2));
                 
                 app.startWait('Exporting K-values after gap-fill...');
                 
-                % Initialize a table to store the combined data with environmental variables
-                combinedData = table();
+                % Step 4: Prepare combined data with environmental variables and timestamps
+                combinedData = prepareEnvironmentalData(app);
                 
-                % Extract environmental variables and timestamp from gap-filled data
-                timestampData = app.GapFilledData.TIMESTAMP;
-                app.DOY = day(timestampData, 'dayofyear'); % Day of Year
-                
-                % Calculate Time of Day in the format HHMM (e.g., 730 for 7:30 AM)
-                hourData = hour(timestampData);
-                minuteData = minute(timestampData);
-                app.tod = hourData * 100 + minuteData; % Convert to HHMM format
-                
-                app.VPD = app.GapFilledData.VPD;
-                app.par = app.GapFilledData.PAR_Den_Avg;
-                
-                % Add TIMESTAMP and environmental variables to the combined data table
-                combinedData.TIMESTAMP = timestampData;
-                combinedData.DOY = app.DOY;
-                combinedData.TOD = app.tod;
-                combinedData.VPD = app.VPD;
-                combinedData.PAR = app.par;
-                
-                % Iterate through all checked sapflow sensors
+                % Step 5: Iterate through all checked sapflow sensors
                 checkedNodes = app.Tree.CheckedNodes;
                 validSensorNodes = checkedNodes(~strcmp({checkedNodes.Text}, 'Sensors'));
-                
+
+                % Clear the previous plot before re-plotting
+                cla(app.UIAxes6_5, 'reset'); % clear and reset the axes
+
                 for i = 1:numel(validSensorNodes)
                     sensorName = validSensorNodes(i).Text;
-                
-                    % Ensure that the gap-filled data is present
+                    
+                    % Check if gap-filled data for the sensor exists
                     if ismember(sensorName, app.GapFilledData.Properties.VariableNames)
-                        % Get the gap-filled sapflow data for this sensor
-                        app.sapflow = app.GapFilledData.(sensorName);
-                
-                        % Create a new SapflowProcessor for this sensor
-                        sensorProcessor = SapflowProcessor(app.DOY, app.tod, app.VPD, app.par, app.sapflow, app.Config);
-                
-                        % Compute K-values
-                        sensorProcessor.compute();
-                        k_values = sensorProcessor.ka_line;
-                
-                        % Transpose k_values to make it a column vector
-                        k_values = k_values';
-                
-                        % Create a temporary table with only K-values
-                        sensorData = table(k_values, 'VariableNames', {['k_', sensorName]});
-                
-                        % Append the K-value column to combinedData
-                        combinedData = [combinedData, sensorData];
+                        % Step 6: Calculate K-values using the sensor data
+                        combinedData = calculateAndAppendKValues(app, sensorName, combinedData);
                     else
-                        app.TextArea_2.Value = [app.TextArea_2.Value; {sprintf('No gap-filled data available for sensor %s.', sensorName)}];
-                        scroll(app.TextArea_2, "bottom");
+                        % Log that data is missing
+                        logMessage(app, sprintf('No gap-filled data available for sensor %s.', sensorName));
                     end
                 end
                 
-                % Attempt to write the table to the specified file
-                try
-                    writetable(combinedData, outputFilename);
-                    app.TextArea_2.Value = [app.TextArea_2.Value; {['K-values exported successfully to ', outputFilename]}];
-                    scroll(app.TextArea_2, "bottom");
-                catch err
-                    errordlg(err.message, 'Export failed');
-                    app.TextArea_2.Value = [app.TextArea_2.Value; {['Error exporting K-values: ', err.message]}];
-                    scroll(app.TextArea_2, "bottom");
-                end
+                % Step 7: Export the combined data to CSV
+                exportKCombinedDataToCSV(app, combinedData, outputFilename);
                 
             catch ME
-                % General error handling
+                % Handle errors and display them in a message box
                 errordlg(ME.message, 'Error');
-                app.TextArea_2.Value = [app.TextArea_2.Value; {['An error occurred: ', ME.message]}];
-                scroll(app.TextArea_2, "bottom");
+                logMessage(app, sprintf('An error occurred: %s', ME.message));
             end
             
             app.endWait();
+        end
+        
+        % Helper function: Prepare environmental data
+        function combinedData = prepareEnvironmentalData(app)
+            timestampData = app.GapFilledData.TIMESTAMP;
+            app.DOY = day(timestampData, 'dayofyear');  % Day of Year
+            app.tod = hour(timestampData) * 100 + minute(timestampData); % Convert to HHMM format
+            
+            app.VPD = app.GapFilledData.VPD;
+            app.par = app.GapFilledData.PAR_Den_Avg;
+            
+            % Create table with TIMESTAMP and environmental variables
+            combinedData = table(timestampData, app.DOY, app.tod, app.VPD, app.par, ...
+                                 'VariableNames', {'TIMESTAMP', 'DOY', 'TOD', 'VPD', 'PAR'});
+        end
+        
+        % Helper function: Calculate, append K-values for a sensor, and plot them
+        function combinedData = calculateAndAppendKValues(app, sensorName, combinedData)
+            % Extract gap-filled sapflow data for the sensor
+            app.sapflow = app.GapFilledData.(sensorName);
+            
+            % Create a new SapflowProcessor and compute K-values
+            sensorProcessor = SapflowProcessor(app.DOY, app.tod, app.VPD, app.par, app.sapflow, app.Config);
+            sensorProcessor.compute();
+            
+            % Retrieve the calculated K-values
+            k_values = sensorProcessor.ka_line';
+            
+            % Append K-values as a new column in the combinedData table
+            combinedData = [combinedData, table(k_values, 'VariableNames', {['k_', sensorName]})];
+            
+            % Plot the K-values on app.UIAxes6_5
+            hold(app.UIAxes6_5, 'on');
+            plot(app.UIAxes6_5, combinedData.TIMESTAMP, k_values, ...
+                 'LineWidth', 1.5, 'DisplayName', strrep(sensorName, '_', '\_'));
+            xlabel(app.UIAxes6_5, 'Timestamp');
+            ylabel(app.UIAxes6_5, 'K-values');
+            title(app.UIAxes6_5, 'K-values for Sensors');
+            legend(app.UIAxes6_5, 'show');
+            hold(app.UIAxes6_5, 'off');
+        end
+
+        
+        % Helper function: Export combined data to CSV
+        function exportKCombinedDataToCSV(app, combinedData, outputFilename)
+            try
+                writetable(combinedData, outputFilename);
+                logMessage(app, ['K-values exported successfully to ', outputFilename]);
+            catch err
+                errordlg(err.message, 'Export failed');
+                logMessage(app, ['Error exporting K-values: ', err.message]);
+            end
+        end
+
+        % Helper function: Export combined data to CSV
+        function exportFCombinedDataToCSV(app, combinedData, outputFilename)
+            try
+                writetable(combinedData, outputFilename);
+                logMessage(app, ['F-values exported successfully to ', outputFilename]);
+            catch err
+                errordlg(err.message, 'Export failed');
+                logMessage(app, ['Error exporting K-values: ', err.message]);
+            end
+        end
+        
+        % Helper function: Log messages to TextArea_2 and scroll to bottom
+        function logMessage(app, message)
+            app.TextArea_2.Value = [app.TextArea_2.Value; {message}];
+            scroll(app.TextArea_2, "bottom");
         end
 
         % Export current K estimates
@@ -2739,7 +2790,7 @@ end
         
                 % Set axes labels and title
                 xlabel(app.UIAxes4, 'Time');
-                ylabel(app.UIAxes4, 'dT (°C)');
+                ylabel(app.UIAxes4, 'dV (mV)');
                 title(app.UIAxes4, 'Sapflow Data and Identified Baselines');
                 legend(app.UIAxes4, 'Sapflow Data', 'Baseline', 'Baseline Points');
                 grid(app.UIAxes4, 'on');
@@ -4085,10 +4136,13 @@ end
             text = {
                 '    SapFlower 1.0'
                 ''
-                '    SapFlower 1.0 was created based on Baseliner 4.0,'
-                '    which was created by A. Christopher Oishi & David Hawthorne'
-                '    USDA Forest Service, Southern Research Station'
-                '    Coweeta Hydrologic Laboratory'
+                '    SapFlower 1.0 data editing window was created based on Baseliner 4.0.'
+                ' '
+                '    SapFlower is an interactive and deep learning powered tool for processing'
+                '    sap flux data from thermal dissipation probes (TDP Granier 1985,1987).'
+                '    It is designed for (1) automated data cleaning (2) state-of-the-art '
+                '    machine learning modeling for gap-filling, and (3) estimating of sap flux '
+                '    from raw TDP data.'
                 ''
                 '    SapFlower was created to automate the preprocessing, data gap filling,'
                 '    and analysis of sap flow data measured based on Heat Dissipation Probes.'
@@ -4681,244 +4735,244 @@ end
 
         % Button pushed function: OutputPathButton
         function OutputPathButtonPushed2(app, event)
-        % Open a dialog to select a folder
-        selectedPath = uigetdir();
-        
-        % Check if the user canceled the selection
-        if selectedPath == 0
-            % User canceled the dialog, you can handle it accordingly
-            disp('User canceled the path selection.');
-            return;
-        end
-        
-        % Set the selected path to the Output EditField
-        app.Output.Value = selectedPath;
-        
-        % Display the selected path in the TextArea or Console for confirmation
-        disp(['Selected Output Path: ', selectedPath]);
-        app.TextArea.Value = [app.TextArea.Value; {['Selected Output Path: ', selectedPath]}];
-        scroll(app.TextArea, "bottom");
+            % Open a dialog to select a folder
+            selectedPath = uigetdir();
+            
+            % Check if the user canceled the selection
+            if selectedPath == 0
+                % User canceled the dialog, you can handle it accordingly
+                disp('User canceled the path selection.');
+                return;
+            end
+            
+            % Set the selected path to the Output EditField
+            app.Output.Value = selectedPath;
+            
+            % Display the selected path in the TextArea or Console for confirmation
+            disp(['Selected Output Path: ', selectedPath]);
+            app.TextArea.Value = [app.TextArea.Value; {['Selected Output Path: ', selectedPath]}];
+            scroll(app.TextArea, "bottom");
         end
 
         % Button pushed function: RawDataButton
         function RawDataButtonPushed2(app, event)
-        try
-            % Get checked sensors from the tree
-            checkedNodes = app.Tree.CheckedNodes;
-            
-            % Filter out the top-level "Sensors" node if it's selected
-            validSensorNodes = checkedNodes(~strcmp({checkedNodes.Text}, 'Sensors'));
-            
-            % Ensure at least one valid sensor is selected
-            if isempty(validSensorNodes)
-                % Use msgbox or update TextArea with the message
-                msgbox('Please select at least one valid sensor.', 'No Sensor Selected', 'warn');
-                return;
-            end
-            
-            % Initialize variables to accumulate data
-            combinedRawData = table();
-            sensorNames = {}; % To store the names of the sensors being loaded
-            
-            % Iterate over each selected sensor and load the raw data
-            for i = 1:length(validSensorNodes)
-                sensorName = validSensorNodes(i).Text;
+            try
+                % Get checked sensors from the tree
+                checkedNodes = app.Tree.CheckedNodes;
                 
-                % Load raw data for the current sensor
-                rawData = loadRawData(app, sensorName);
+                % Filter out the top-level "Sensors" node if it's selected
+                validSensorNodes = checkedNodes(~strcmp({checkedNodes.Text}, 'Sensors'));
                 
-                % Rename the sensor data column to include the sensor name
-                rawData.Properties.VariableNames{2} = sensorName; % Assumes data is in the second column
-                
-                % Store the sensor name for later use
-                sensorNames{end+1} = sensorName;
-                
-                % Align data by TIMESTAMP and merge
-                if isempty(combinedRawData)
-                    combinedRawData = rawData;
-                else
-                    % Merge tables by TIMESTAMP, keeping all timestamps from both tables
-                    combinedRawData = outerjoin(combinedRawData, rawData, 'Keys', 'TIMESTAMP', ...
-                        'MergeKeys', true, 'Type', 'full', 'LeftVariables', 1:size(combinedRawData, 2), ...
-                        'RightVariables', sensorName);
+                % Ensure at least one valid sensor is selected
+                if isempty(validSensorNodes)
+                    % Use msgbox or update TextArea with the message
+                    msgbox('Please select at least one valid sensor.', 'No Sensor Selected', 'warn');
+                    return;
                 end
+                
+                % Initialize variables to accumulate data
+                combinedRawData = table();
+                sensorNames = {}; % To store the names of the sensors being loaded
+                
+                % Iterate over each selected sensor and load the raw data
+                for i = 1:length(validSensorNodes)
+                    sensorName = validSensorNodes(i).Text;
+                    
+                    % Load raw data for the current sensor
+                    rawData = loadRawData(app, sensorName);
+                    
+                    % Rename the sensor data column to include the sensor name
+                    rawData.Properties.VariableNames{2} = sensorName; % Assumes data is in the second column
+                    
+                    % Store the sensor name for later use
+                    sensorNames{end+1} = sensorName;
+                    
+                    % Align data by TIMESTAMP and merge
+                    if isempty(combinedRawData)
+                        combinedRawData = rawData;
+                    else
+                        % Merge tables by TIMESTAMP, keeping all timestamps from both tables
+                        combinedRawData = outerjoin(combinedRawData, rawData, 'Keys', 'TIMESTAMP', ...
+                            'MergeKeys', true, 'Type', 'full', 'LeftVariables', 1:size(combinedRawData, 2), ...
+                            'RightVariables', sensorName);
+                    end
+                end
+                
+                % Update UITable5 with the combined raw data
+                app.UITable5.Data = combinedRawData;
+                
+                % Set the column names in UITable5 to match the sensor names
+                combinedColumnNames = combinedRawData.Properties.VariableNames;
+                app.UITable5.ColumnName = combinedColumnNames;
+                
+                % Plot the raw data for each sensor on UIAxes6_4
+                cla(app.UIAxes6_4); % Clear existing plots
+                hold(app.UIAxes6_4, 'on');
+                
+                % Generate distinct colors for each sensor
+                colors = lines(length(sensorNames)); 
+                colorIndex = 1;
+                
+                for i = 1:length(sensorNames)
+                    % Escape underscores to avoid subscripts in the legend
+                    displayName = strrep(sensorNames{i}, '_', '\_');
+                    % Use the actual sensor name to plot each sensor's data with a different color
+                    sensorName = sensorNames{i};
+                    plot(app.UIAxes6_4, combinedRawData.TIMESTAMP, combinedRawData{:, sensorName}, ...
+                        'DisplayName', displayName, 'Color', colors(colorIndex, :));
+                    colorIndex = colorIndex + 1;
+                end
+                
+                hold(app.UIAxes6_4, 'off');
+                
+                % Set plot labels and title
+                xlabel(app.UIAxes6_4, 'Timestamp');
+                ylabel(app.UIAxes6_4, 'Raw Data');
+                title(app.UIAxes6_4, 'Raw Data for Selected Sensors');
+                legend(app.UIAxes6_4, 'show');
+                
+            catch ME
+                % Handle any unexpected errors
+                msgbox(sprintf('An error occurred, you need to check at least one sensor: %s', ME.message), 'Error', 'error');
+                app.TextArea_2.Value = [app.TextArea_2.Value; {sprintf('An error occurred while loading raw data: %s', ME.message)}];
+                scroll(app.TextArea_2, "bottom");
+                drawnow;
             end
-            
-            % Update UITable5 with the combined raw data
-            app.UITable5.Data = combinedRawData;
-            
-            % Set the column names in UITable5 to match the sensor names
-            combinedColumnNames = combinedRawData.Properties.VariableNames;
-            app.UITable5.ColumnName = combinedColumnNames;
-            
-            % Plot the raw data for each sensor on UIAxes6_4
-            cla(app.UIAxes6_4); % Clear existing plots
-            hold(app.UIAxes6_4, 'on');
-            
-            % Generate distinct colors for each sensor
-            colors = lines(length(sensorNames)); 
-            colorIndex = 1;
-            
-            for i = 1:length(sensorNames)
-                % Escape underscores to avoid subscripts in the legend
-                displayName = strrep(sensorNames{i}, '_', '\_');
-                % Use the actual sensor name to plot each sensor's data with a different color
-                sensorName = sensorNames{i};
-                plot(app.UIAxes6_4, combinedRawData.TIMESTAMP, combinedRawData{:, sensorName}, ...
-                    'DisplayName', displayName, 'Color', colors(colorIndex, :));
-                colorIndex = colorIndex + 1;
-            end
-            
-            hold(app.UIAxes6_4, 'off');
-            
-            % Set plot labels and title
-            xlabel(app.UIAxes6_4, 'Timestamp');
-            ylabel(app.UIAxes6_4, 'Raw Data');
-            title(app.UIAxes6_4, 'Raw Data for Selected Sensors');
-            legend(app.UIAxes6_4, 'show');
-            
-        catch ME
-            % Handle any unexpected errors
-            msgbox(sprintf('An error occurred, you need to check at least one sensor: %s', ME.message), 'Error', 'error');
-            app.TextArea_2.Value = [app.TextArea_2.Value; {sprintf('An error occurred while loading raw data: %s', ME.message)}];
-            scroll(app.TextArea_2, "bottom");
-            drawnow;
-        end
 
         end
 
         % Button pushed function: PredictedDataButton
         function PredictedDataButtonPushed2(app, event)
-        try
-            % Get checked sensors from the tree
-            checkedNodes = app.Tree.CheckedNodes;
-            
-            % Filter out the top-level "Sensors" node if it's selected
-            validSensorNodes = checkedNodes(~strcmp({checkedNodes.Text}, 'Sensors'));
-            
-            % Ensure at least one valid sensor is selected
-            if isempty(validSensorNodes)
-                % Use msgbox or update TextArea with the message
-                msgbox('Please select at least one valid sensor.', 'No Sensor Selected', 'warn');
-                return;
-            end
-            
-            % Initialize variables to accumulate data
-            combinedPredictedData = table();
-            sensorNames = {}; % To store the names of the sensors being loaded
-            modelOptionsPerSensor = cell(1, length(validSensorNodes));
-            
-            % Iterate over each selected sensor to load available model types
-            for i = 1:length(validSensorNodes)
-                sensorName = validSensorNodes(i).Text;
-                modelFiles = dir(fullfile(app.Output.Value, 'PredictedData', sprintf('Predicted_*_%s.csv', sensorName)));
+            try
+                % Get checked sensors from the tree
+                checkedNodes = app.Tree.CheckedNodes;
                 
-                % Collect available model types for the sensor
-                modelTypes = cell(length(modelFiles), 1);
-                for j = 1:length(modelFiles)
-                    [~, name, ~] = fileparts(modelFiles(j).name);
-                    extractedType = extractBetween(name, 'Predicted_', sprintf('_%s', sensorName));
-                    if ~isempty(extractedType)
-                        modelTypes{j} = extractedType{1}; % Ensure it's a char array
+                % Filter out the top-level "Sensors" node if it's selected
+                validSensorNodes = checkedNodes(~strcmp({checkedNodes.Text}, 'Sensors'));
+                
+                % Ensure at least one valid sensor is selected
+                if isempty(validSensorNodes)
+                    % Use msgbox or update TextArea with the message
+                    msgbox('Please select at least one valid sensor.', 'No Sensor Selected', 'warn');
+                    return;
+                end
+                
+                % Initialize variables to accumulate data
+                combinedPredictedData = table();
+                sensorNames = {}; % To store the names of the sensors being loaded
+                modelOptionsPerSensor = cell(1, length(validSensorNodes));
+                
+                % Iterate over each selected sensor to load available model types
+                for i = 1:length(validSensorNodes)
+                    sensorName = validSensorNodes(i).Text;
+                    modelFiles = dir(fullfile(app.Output.Value, 'PredictedData', sprintf('Predicted_*_%s.csv', sensorName)));
+                    
+                    % Collect available model types for the sensor
+                    modelTypes = cell(length(modelFiles), 1);
+                    for j = 1:length(modelFiles)
+                        [~, name, ~] = fileparts(modelFiles(j).name);
+                        extractedType = extractBetween(name, 'Predicted_', sprintf('_%s', sensorName));
+                        if ~isempty(extractedType)
+                            modelTypes{j} = extractedType{1}; % Ensure it's a char array
+                        end
+                    end
+                    modelOptionsPerSensor{i} = unique(modelTypes(~cellfun('isempty', modelTypes)));
+                end
+                
+                % Ask the user to select the model type for each sensor
+                selectedModelTypes = cell(1, length(validSensorNodes));
+                for i = 1:length(validSensorNodes)
+                    sensorName = validSensorNodes(i).Text;
+                    modelOptions = modelOptionsPerSensor{i};
+                    [indx, tf] = listdlg('PromptString', sprintf('Select model type for sensor %s:', sensorName), ...
+                                         'SelectionMode', 'single', ...
+                                         'ListString', modelOptions, ...
+                                         'ListSize', [260, 200]);  % Adjust the width and height
+                    if tf
+                        selectedModelTypes{i} = modelOptions{indx};
+                    else
+                        % If the user cancels the dialog, skip this sensor
+                        selectedModelTypes{i} = [];
                     end
                 end
-                modelOptionsPerSensor{i} = unique(modelTypes(~cellfun('isempty', modelTypes)));
-            end
-            
-            % Ask the user to select the model type for each sensor
-            selectedModelTypes = cell(1, length(validSensorNodes));
-            for i = 1:length(validSensorNodes)
-                sensorName = validSensorNodes(i).Text;
-                modelOptions = modelOptionsPerSensor{i};
-                [indx, tf] = listdlg('PromptString', sprintf('Select model type for sensor %s:', sensorName), ...
-                                     'SelectionMode', 'single', ...
-                                     'ListString', modelOptions, ...
-                                     'ListSize', [260, 200]);  % Adjust the width and height
-                if tf
-                    selectedModelTypes{i} = modelOptions{indx};
-                else
-                    % If the user cancels the dialog, skip this sensor
-                    selectedModelTypes{i} = [];
+        
+                
+                % Iterate over each selected sensor to load the predicted data
+                for i = 1:length(validSensorNodes)
+                    sensorName = validSensorNodes(i).Text;
+                    selectedModelType = selectedModelTypes{i};
+                    
+                    if isempty(selectedModelType)
+                        continue; % Skip sensors with no model type selected
+                    end
+                    
+                    % Load predicted data for the current sensor and model type
+                    predictedData = loadPredictedData(app, sensorName, selectedModelType);
+                    
+                    % Dynamically find the column name for the predicted sapflow data
+                    sapflowColumnName = predictedData.Properties.VariableNames{find(contains(predictedData.Properties.VariableNames, 'PredictedSapflow'), 1)};
+                    
+                    % Extract only the TIMESTAMP and PredictedSapflow columns
+                    predictedData = predictedData(:, {'TIMESTAMP', sapflowColumnName});
+                    
+                    % Rename the PredictedSapflow column to include the sensor name and model type
+                    renamedColumn = sprintf('%s_%s', sensorName, selectedModelType);
+                    predictedData.Properties.VariableNames{2} = renamedColumn;
+                    
+                    % Store the sensor name for later use
+                    sensorNames{end+1} = renamedColumn;
+                    
+                    % Merge predicted data based on TIMESTAMP, using the longest range
+                    if isempty(combinedPredictedData)
+                        combinedPredictedData = predictedData;
+                    else
+                        % Merge tables by TIMESTAMP, keeping all timestamps from both tables
+                        combinedPredictedData = outerjoin(combinedPredictedData, predictedData, 'Keys', 'TIMESTAMP', ...
+                            'MergeKeys', true, 'Type', 'full', 'LeftVariables', 1:size(combinedPredictedData, 2), ...
+                            'RightVariables', renamedColumn);
+                    end
                 end
-            end
-    
-            
-            % Iterate over each selected sensor to load the predicted data
-            for i = 1:length(validSensorNodes)
-                sensorName = validSensorNodes(i).Text;
-                selectedModelType = selectedModelTypes{i};
                 
-                if isempty(selectedModelType)
-                    continue; % Skip sensors with no model type selected
+                % Update UITable5_2 with the combined predicted data
+                app.UITable5_2.Data = combinedPredictedData;
+                
+                % Set the column names in UITable5_2 to match the sensor names
+                combinedColumnNames = combinedPredictedData.Properties.VariableNames;
+                app.UITable5_2.ColumnName = combinedColumnNames;
+                
+                % Plot the predicted data for each sensor on UIAxes6_2
+                cla(app.UIAxes6_2); % Clear existing plots
+                hold(app.UIAxes6_2, 'on');
+                
+                % Generate distinct colors for each sensor
+                colors = lines(length(sensorNames)); 
+                colorIndex = 1;
+                
+                for i = 1:length(sensorNames)
+                    % Escape underscores to avoid subscripts in the legend
+                    displayName = strrep(sensorNames{i}, '_', '\_');
+                    % Use the actual sensor name to plot each sensor's data with a different color
+                    sensorName = sensorNames{i};
+                    plot(app.UIAxes6_2, combinedPredictedData.TIMESTAMP, combinedPredictedData{:, sensorName}, ...
+                        'DisplayName', displayName, 'Color', colors(colorIndex, :));
+                    colorIndex = colorIndex + 1;
                 end
                 
-                % Load predicted data for the current sensor and model type
-                predictedData = loadPredictedData(app, sensorName, selectedModelType);
+                hold(app.UIAxes6_2, 'off');
                 
-                % Dynamically find the column name for the predicted sapflow data
-                sapflowColumnName = predictedData.Properties.VariableNames{find(contains(predictedData.Properties.VariableNames, 'PredictedSapflow'), 1)};
+                % Set plot labels and title
+                xlabel(app.UIAxes6_2, 'Timestamp');
+                ylabel(app.UIAxes6_2, 'Predicted Data');
+                title(app.UIAxes6_2, 'Predicted Data for Selected Sensors');
+                legend(app.UIAxes6_2, 'show');
                 
-                % Extract only the TIMESTAMP and PredictedSapflow columns
-                predictedData = predictedData(:, {'TIMESTAMP', sapflowColumnName});
-                
-                % Rename the PredictedSapflow column to include the sensor name and model type
-                renamedColumn = sprintf('%s_%s', sensorName, selectedModelType);
-                predictedData.Properties.VariableNames{2} = renamedColumn;
-                
-                % Store the sensor name for later use
-                sensorNames{end+1} = renamedColumn;
-                
-                % Merge predicted data based on TIMESTAMP, using the longest range
-                if isempty(combinedPredictedData)
-                    combinedPredictedData = predictedData;
-                else
-                    % Merge tables by TIMESTAMP, keeping all timestamps from both tables
-                    combinedPredictedData = outerjoin(combinedPredictedData, predictedData, 'Keys', 'TIMESTAMP', ...
-                        'MergeKeys', true, 'Type', 'full', 'LeftVariables', 1:size(combinedPredictedData, 2), ...
-                        'RightVariables', renamedColumn);
-                end
+            catch ME
+                % Handle any unexpected errors
+                msgbox(sprintf('An error occurred: %s', ME.message), 'Error', 'error');
+                app.TextArea_2.Value = [app.TextArea_2.Value; {sprintf('An error occurred while loading predicted data: %s', ME.message)}];
+                scroll(app.TextArea_2, "bottom");
+                drawnow;
             end
-            
-            % Update UITable5_2 with the combined predicted data
-            app.UITable5_2.Data = combinedPredictedData;
-            
-            % Set the column names in UITable5_2 to match the sensor names
-            combinedColumnNames = combinedPredictedData.Properties.VariableNames;
-            app.UITable5_2.ColumnName = combinedColumnNames;
-            
-            % Plot the predicted data for each sensor on UIAxes6_2
-            cla(app.UIAxes6_2); % Clear existing plots
-            hold(app.UIAxes6_2, 'on');
-            
-            % Generate distinct colors for each sensor
-            colors = lines(length(sensorNames)); 
-            colorIndex = 1;
-            
-            for i = 1:length(sensorNames)
-                % Escape underscores to avoid subscripts in the legend
-                displayName = strrep(sensorNames{i}, '_', '\_');
-                % Use the actual sensor name to plot each sensor's data with a different color
-                sensorName = sensorNames{i};
-                plot(app.UIAxes6_2, combinedPredictedData.TIMESTAMP, combinedPredictedData{:, sensorName}, ...
-                    'DisplayName', displayName, 'Color', colors(colorIndex, :));
-                colorIndex = colorIndex + 1;
-            end
-            
-            hold(app.UIAxes6_2, 'off');
-            
-            % Set plot labels and title
-            xlabel(app.UIAxes6_2, 'Timestamp');
-            ylabel(app.UIAxes6_2, 'Predicted Data');
-            title(app.UIAxes6_2, 'Predicted Data for Selected Sensors');
-            legend(app.UIAxes6_2, 'show');
-            
-        catch ME
-            % Handle any unexpected errors
-            msgbox(sprintf('An error occurred: %s', ME.message), 'Error', 'error');
-            app.TextArea_2.Value = [app.TextArea_2.Value; {sprintf('An error occurred while loading predicted data: %s', ME.message)}];
-            scroll(app.TextArea_2, "bottom");
-            drawnow;
-        end
 
         end
 
@@ -5158,17 +5212,17 @@ end
         % Menu selected function: ExportKMenu
         function ExportKMenuSelected(app, event)
 
-                % Check if there is a plot on app.UIAxes6_4
-                if isempty(app.UIAxes6_4.Children)
-                    % No plot exists, do one thing
-                    msgbox('You have not finished gap-filling, exporting the current K only...', 'Gap-filling status');
-                    exportCurrentK(app);
-                    
-                else
-                    % A plot exists, do another thing
-                    msgbox('Exporting gap-filled K...', 'Gap-filling status');
-                    exportFValuesAfterGapFill(app);
-                end
+            % Check if there is a plot on app.UIAxes6_4
+            if isempty(app.UIAxes6_4.Children)
+                % No plot exists, do one thing
+                msgbox('You have not finished gap-filling, exporting the current K only...', 'Gap-filling status');
+                exportCurrentK(app);
+                
+            else
+                % A plot exists, do another thing
+                msgbox('Exporting gap-filled K...', 'Gap-filling status');
+                exportFValuesAfterGapFill(app);
+            end
 
         end
 
@@ -5319,6 +5373,151 @@ end
         % Menu selected function: ManualMenu
         function ManualMenuSelected(app, event)
             web("https://drive.google.com/file/d/1SY2H-VPlrfjW-QAQ76gNsfPjQdndGrBF/view?usp=drive_link", '-browser');
+        end
+
+        % Button pushed function: ExportDailyWaterUse
+        function ExportDailyWaterUseButtonPushed2(app, event)
+            try
+                % Step 1: Check if a valid output path is defined
+                outputPath = app.Output.Value;
+                if isempty(outputPath) || ~isfolder(outputPath)
+                    errordlg('Please set a valid output path in the Output field.', 'Invalid Output Path');
+                    return;
+                end
+                
+                % Step 2: Create export folder for water use if not already existing
+                exportFolderPath = fullfile(outputPath, 'SapFluxDensity');
+                if ~isfolder(exportFolderPath)
+                    mkdir(exportFolderPath);
+                end
+                
+                % Step 3: Generate output filename with timestamp
+                app.timestamp = datestr(now, 'yyyymmdd_HHMMSS');
+                exportFilename = fullfile(exportFolderPath, sprintf('SapFluxDensity_%s.csv', app.timestamp));
+                
+                app.startWait('Calculating and exporting sap flow after gap-fill...');
+                
+                % Step 4: Prompt user for coefficients 'a' and 'b'
+                prompt = {'Enter the value for coefficient a:', 'Enter the value for coefficient b:'};
+                dlgtitle = 'Input Coefficients';
+                dims = [1 50];
+                definput = {'0.11899', '1.231'};
+                answer = inputdlg(prompt, dlgtitle, dims, definput);
+                if isempty(answer)
+                    app.endWait();
+                    return; % Exit if the user cancels the input dialog
+                end
+                
+                % Convert user input to numerical values
+                a = str2double(answer{1});
+                b = str2double(answer{2});
+                if isnan(a) || isnan(b)
+                    errordlg('Invalid input for coefficients. Please enter valid numbers.', 'Invalid Input');
+                    app.endWait();
+                    return;
+                end
+                
+                % Step 5: Get user-defined time interval (in minutes) from app.TimeStepIncrementsminEditField
+                timeStepInMinutes = app.TimeStepIncrementsminEditField.Value;  % Get the user-defined time interval in minutes
+                if isempty(timeStepInMinutes) || timeStepInMinutes <= 0
+                    errordlg('Please enter a valid time step increment in minutes.', 'Invalid Time Step');
+                    app.endWait();
+                    return;
+                end
+                
+                % Convert time step into seconds (as water use is calculated per second)
+                timeStepInSeconds = timeStepInMinutes * 60;
+                
+                % Step 6: Check if user selected hourly or daily export
+                exportType = app.ExportTypeDropDown.Value;  % Dropdown value either 'Hourly' or 'Daily'
+                timestampData = app.GapFilledData.TIMESTAMP;
+
+                % Clear the previous plot before re-plotting
+                cla(app.UIAxes6_7, 'reset'); % clear and reset the axes
+
+
+                if strcmp(exportType, 'Daily')
+                    % Aggregate data by day
+                    dateData = dateshift(datetime(timestampData), 'start', 'day'); % Convert timestamp to date only (daily aggregation)
+                    combinedData = table(dateData, 'VariableNames', {'Date'});
+                    groupingVar = 'Date';
+                elseif strcmp(exportType, 'Hourly')
+                    % Aggregate data by hour
+                    dateData = dateshift(datetime(timestampData), 'start', 'hour'); % Convert timestamp to hourly aggregation
+                    combinedData = table(dateData, 'VariableNames', {'DateTime'});
+                    groupingVar = 'DateTime';
+                end
+                
+                % Step 7: Iterate through all checked sapflow sensors and calculate water use
+                checkedNodes = app.Tree.CheckedNodes;
+                validSensorNodes = checkedNodes(~strcmp({checkedNodes.Text}, 'Sensors'));
+                
+                hold(app.UIAxes6_7, 'on'); % Prepare for plotting
+                
+                for i = 1:numel(validSensorNodes)
+                    sensorName = validSensorNodes(i).Text;
+                    
+                    % Ensure gap-filled data is available
+                    if ismember(sensorName, app.GapFilledData.Properties.VariableNames)
+                        % Extract gap-filled sapflow data for the sensor
+                        sapflowData = app.GapFilledData.(sensorName);
+                        
+                        % Calculate water use per second using the formula F = a * (K)^b
+                        waterUsePerSecond = a * (sapflowData.^b);
+                        
+                        % Multiply by the user-defined time interval (in seconds) to get water use for that interval
+                        waterUsePerInterval = waterUsePerSecond * timeStepInSeconds;
+                        
+                        % Create a temporary table with Date/DateTime and water use data
+                        tempTable = table(dateData, waterUsePerInterval, 'VariableNames', {groupingVar, ['SapFluxDensity_', sensorName]});
+                        
+                        % Group data by Date or DateTime (based on export type) and sum the water use
+                        aggregatedWaterUse = groupsummary(tempTable, groupingVar, 'sum', ['SapFluxDensity_', sensorName]);
+                        summedWaterUseVarName = ['sum_SapFluxDensity_', sensorName];
+                        
+                        % Append to the combined water use table
+                        combinedData = join(combinedData, aggregatedWaterUse(:, {groupingVar, summedWaterUseVarName}), 'Keys', groupingVar);
+                        
+                        % Plot the water use on app.UIAxes6_7
+                        plot(app.UIAxes6_7, aggregatedWaterUse.(groupingVar), aggregatedWaterUse.(summedWaterUseVarName), ...
+                             'LineWidth', 1.5, 'DisplayName', strrep(sensorName, '_', '\_'));
+                    else
+                        % Log missing data
+                        app.TextArea_2.Value = [app.TextArea_2.Value; {sprintf('No gap-filled data available for sensor %s.', sensorName)}];
+                        scroll(app.TextArea_2, "bottom");
+                    end
+                end
+                
+                % Step 8: Export the combined water use data to CSV
+                try
+                    writetable(combinedData, exportFilename);
+                    app.TextArea_2.Value = [app.TextArea_2.Value; {['Sap Flux Density exported successfully to ', exportFilename]}];
+                    scroll(app.TextArea_2, "bottom");
+                catch err
+                    errordlg(err.message, 'Export failed');
+                    app.TextArea_2.Value = [app.TextArea_2.Value; {['Error exporting Sap Flux Density: ', err.message]}];
+                    scroll(app.TextArea_2, "bottom");
+                end
+                
+                % Set axis labels and legend
+                if strcmp(exportType, 'Daily')
+                    xlabel(app.UIAxes6_7, 'Date (Daily Sap Flux Density)');
+                elseif strcmp(exportType, 'Hourly')
+                    xlabel(app.UIAxes6_7, 'DateTime (Hourly Sap Flux Density)');
+                end
+                ylabel(app.UIAxes6_7, 'Sap Flux Density');
+                title(app.UIAxes6_7, {sprintf('Sap Flux Density for sensor %s.', sensorName)});
+                legend(app.UIAxes6_7, 'show');
+                hold(app.UIAxes6_7, 'off'); % Release the plot hold
+                
+            catch ME
+                % Handle errors and display them
+                errordlg(ME.message, 'Error');
+                app.TextArea_2.Value = [app.TextArea_2.Value; {['An error occurred: ', ME.message]}];
+                scroll(app.TextArea_2, "bottom");
+            end
+            
+            app.endWait();
         end
     end
 
@@ -5811,6 +6010,45 @@ end
             app.GridLayout13.RowSpacing = 3.5;
             app.GridLayout13.Padding = [1.5454531582919 3.5 1.5454531582919 3.5];
 
+            % Create UIAxes3
+            app.UIAxes3 = uiaxes(app.GridLayout13);
+            xlabel(app.UIAxes3, 'Time')
+            ylabel(app.UIAxes3, 'dV Overview')
+            zlabel(app.UIAxes3, 'Z')
+            app.UIAxes3.TickLength = [0.006 0.025];
+            app.UIAxes3.GridLineWidth = 0.25;
+            app.UIAxes3.MinorGridLineWidth = 0.25;
+            app.UIAxes3.GridLineStyle = '-.';
+            app.UIAxes3.XColor = [0 0 0];
+            app.UIAxes3.YColor = [0 0 0];
+            app.UIAxes3.ZColor = [0 0 0];
+            app.UIAxes3.LineWidth = 0.25;
+            app.UIAxes3.Box = 'on';
+            app.UIAxes3.XGrid = 'on';
+            app.UIAxes3.YGrid = 'on';
+            app.UIAxes3.Layout.Row = 3;
+            app.UIAxes3.Layout.Column = [1 8];
+
+            % Create UIAxes4
+            app.UIAxes4 = uiaxes(app.GridLayout13);
+            xlabel(app.UIAxes4, 'Time')
+            ylabel(app.UIAxes4, 'dV (mV)')
+            zlabel(app.UIAxes4, 'Z')
+            app.UIAxes4.TickLength = [0.006 0.025];
+            app.UIAxes4.GridLineStyle = '-.';
+            app.UIAxes4.XColor = [0 0 0];
+            app.UIAxes4.YColor = [0 0 0];
+            app.UIAxes4.ZColor = [0 0 0];
+            app.UIAxes4.LineWidth = 0.25;
+            app.UIAxes4.TitleHorizontalAlignment = 'left';
+            app.UIAxes4.GridColor = [0.302 0.749 0.9294];
+            app.UIAxes4.Box = 'on';
+            app.UIAxes4.XGrid = 'on';
+            app.UIAxes4.YGrid = 'on';
+            app.UIAxes4.Layout.Row = 2;
+            app.UIAxes4.Layout.Column = [1 21];
+            app.UIAxes4.PickableParts = 'all';
+
             % Create UIAxes5
             app.UIAxes5 = uiaxes(app.GridLayout13);
             xlabel(app.UIAxes5, 'Time')
@@ -5829,45 +6067,6 @@ end
             app.UIAxes5.YGrid = 'on';
             app.UIAxes5.Layout.Row = 3;
             app.UIAxes5.Layout.Column = [9 21];
-
-            % Create UIAxes4
-            app.UIAxes4 = uiaxes(app.GridLayout13);
-            xlabel(app.UIAxes4, 'Time')
-            ylabel(app.UIAxes4, 'dT (°C)')
-            zlabel(app.UIAxes4, 'Z')
-            app.UIAxes4.TickLength = [0.006 0.025];
-            app.UIAxes4.GridLineStyle = '-.';
-            app.UIAxes4.XColor = [0 0 0];
-            app.UIAxes4.YColor = [0 0 0];
-            app.UIAxes4.ZColor = [0 0 0];
-            app.UIAxes4.LineWidth = 0.25;
-            app.UIAxes4.TitleHorizontalAlignment = 'left';
-            app.UIAxes4.GridColor = [0.302 0.749 0.9294];
-            app.UIAxes4.Box = 'on';
-            app.UIAxes4.XGrid = 'on';
-            app.UIAxes4.YGrid = 'on';
-            app.UIAxes4.Layout.Row = 2;
-            app.UIAxes4.Layout.Column = [1 21];
-            app.UIAxes4.PickableParts = 'all';
-
-            % Create UIAxes3
-            app.UIAxes3 = uiaxes(app.GridLayout13);
-            xlabel(app.UIAxes3, 'Time')
-            ylabel(app.UIAxes3, 'dT Overview')
-            zlabel(app.UIAxes3, 'Z')
-            app.UIAxes3.TickLength = [0.006 0.025];
-            app.UIAxes3.GridLineWidth = 0.25;
-            app.UIAxes3.MinorGridLineWidth = 0.25;
-            app.UIAxes3.GridLineStyle = '-.';
-            app.UIAxes3.XColor = [0 0 0];
-            app.UIAxes3.YColor = [0 0 0];
-            app.UIAxes3.ZColor = [0 0 0];
-            app.UIAxes3.LineWidth = 0.25;
-            app.UIAxes3.Box = 'on';
-            app.UIAxes3.XGrid = 'on';
-            app.UIAxes3.YGrid = 'on';
-            app.UIAxes3.Layout.Row = 3;
-            app.UIAxes3.Layout.Column = [1 8];
 
             % Create DeletedTdataButton
             app.DeletedTdataButton = uibutton(app.GridLayout13, 'push');
@@ -6369,6 +6568,7 @@ end
             app.ScaleDataCheckBox.FontColor = [0.0471 0.5686 0.502];
             app.ScaleDataCheckBox.Layout.Row = 9;
             app.ScaleDataCheckBox.Layout.Column = [7 8];
+            app.ScaleDataCheckBox.Value = true;
 
             % Create GapFillingTab
             app.GapFillingTab = uitab(app.TabGroup);
@@ -6376,16 +6576,17 @@ end
             app.GapFillingTab.BackgroundColor = [0.902 0.902 0.902];
             app.GapFillingTab.Scrollable = 'on';
 
-            % Create GridLayout15
-            app.GridLayout15 = uigridlayout(app.GapFillingTab);
-            app.GridLayout15.ColumnWidth = {58, '1.09x', 84, '1x', 108};
-            app.GridLayout15.RowHeight = {22, 23, 21, 22, 22, '2.24x', 22, '6.76x', '1x'};
-            app.GridLayout15.ColumnSpacing = 2.83332824707031;
-            app.GridLayout15.RowSpacing = 6.09999694824219;
-            app.GridLayout15.Padding = [2.83332824707031 6.09999694824219 2.83332824707031 6.09999694824219];
+            % Create GridLayout17
+            app.GridLayout17 = uigridlayout(app.GapFillingTab);
+            app.GridLayout17.ColumnWidth = {58, '1.22x', 132, '1x', 109};
+            app.GridLayout17.RowHeight = {22, 23, 21, 22, 22, 23, 19, '1.51x', 22, '6.76x', '1x'};
+            app.GridLayout17.ColumnSpacing = 0.166666666666666;
+            app.GridLayout17.RowSpacing = 4.58333333333333;
+            app.GridLayout17.Padding = [0.166666666666666 4.58333333333333 0.166666666666666 4.58333333333333];
+            app.GridLayout17.BackgroundColor = [0.94 0.94 0.94];
 
             % Create GapFillButton
-            app.GapFillButton = uibutton(app.GridLayout15, 'push');
+            app.GapFillButton = uibutton(app.GridLayout17, 'push');
             app.GapFillButton.ButtonPushedFcn = createCallbackFcn(app, @GapFillButtonPushed2, true);
             app.GapFillButton.BackgroundColor = [0.2196 0.6314 0.5059];
             app.GapFillButton.FontColor = [1 1 1];
@@ -6394,7 +6595,7 @@ end
             app.GapFillButton.Text = 'GapFill';
 
             % Create PredictedDataButton
-            app.PredictedDataButton = uibutton(app.GridLayout15, 'push');
+            app.PredictedDataButton = uibutton(app.GridLayout17, 'push');
             app.PredictedDataButton.ButtonPushedFcn = createCallbackFcn(app, @PredictedDataButtonPushed2, true);
             app.PredictedDataButton.BackgroundColor = [0.2314 0.7216 0.6627];
             app.PredictedDataButton.FontColor = [1 1 1];
@@ -6403,7 +6604,7 @@ end
             app.PredictedDataButton.Text = 'PredictedData';
 
             % Create RawDataButton
-            app.RawDataButton = uibutton(app.GridLayout15, 'push');
+            app.RawDataButton = uibutton(app.GridLayout17, 'push');
             app.RawDataButton.ButtonPushedFcn = createCallbackFcn(app, @RawDataButtonPushed2, true);
             app.RawDataButton.BackgroundColor = [0.302 0.7882 0.702];
             app.RawDataButton.FontColor = [1 1 1];
@@ -6412,24 +6613,24 @@ end
             app.RawDataButton.Text = 'RawData';
 
             % Create UITable5
-            app.UITable5 = uitable(app.GridLayout15);
+            app.UITable5 = uitable(app.GridLayout17);
             app.UITable5.ColumnName = {'Column 1'; 'Column 2'; 'Column 3'; 'Column 4'};
             app.UITable5.ColumnRearrangeable = 'on';
             app.UITable5.RowName = {};
-            app.UITable5.Layout.Row = 8;
+            app.UITable5.Layout.Row = 10;
             app.UITable5.Layout.Column = [1 2];
 
             % Create UITable5_2
-            app.UITable5_2 = uitable(app.GridLayout15);
+            app.UITable5_2 = uitable(app.GridLayout17);
             app.UITable5_2.ColumnName = {'Column 1'; 'Column 2'; 'Column 3'; 'Column 4'};
             app.UITable5_2.ColumnRearrangeable = 'on';
             app.UITable5_2.RowName = {};
-            app.UITable5_2.Layout.Row = 8;
+            app.UITable5_2.Layout.Row = 10;
             app.UITable5_2.Layout.Column = [3 4];
 
             % Create Tree
-            app.Tree = uitree(app.GridLayout15, 'checkbox');
-            app.Tree.Layout.Row = [6 8];
+            app.Tree = uitree(app.GridLayout17, 'checkbox');
+            app.Tree.Layout.Row = 10;
             app.Tree.Layout.Column = 5;
 
             % Create Node
@@ -6445,8 +6646,8 @@ end
             app.Node2.Text = 'Node2';
 
             % Create TabGroup2
-            app.TabGroup2 = uitabgroup(app.GridLayout15);
-            app.TabGroup2.Layout.Row = [1 6];
+            app.TabGroup2 = uitabgroup(app.GridLayout17);
+            app.TabGroup2.Layout.Row = [1 8];
             app.TabGroup2.Layout.Column = [1 4];
 
             % Create ViewRawDataTab
@@ -6459,7 +6660,8 @@ end
             xlabel(app.UIAxes6_4, 'X')
             ylabel(app.UIAxes6_4, 'Y')
             zlabel(app.UIAxes6_4, 'Z')
-            app.UIAxes6_4.Position = [1 1 1070 224];
+            app.UIAxes6_4.Box = 'on';
+            app.UIAxes6_4.Position = [1 9 1070 224];
 
             % Create ViewPredictedDataTab
             app.ViewPredictedDataTab = uitab(app.TabGroup2);
@@ -6471,7 +6673,8 @@ end
             xlabel(app.UIAxes6_2, 'X')
             ylabel(app.UIAxes6_2, 'Y')
             zlabel(app.UIAxes6_2, 'Z')
-            app.UIAxes6_2.Position = [2 1 1069 225];
+            app.UIAxes6_2.Box = 'on';
+            app.UIAxes6_2.Position = [2 9 1069 225];
 
             % Create ViewGapFilledDataTab
             app.ViewGapFilledDataTab = uitab(app.TabGroup2);
@@ -6483,22 +6686,67 @@ end
             xlabel(app.UIAxes6_3, 'X')
             ylabel(app.UIAxes6_3, 'Y')
             zlabel(app.UIAxes6_3, 'Z')
-            app.UIAxes6_3.Position = [2 0 1069 226];
+            app.UIAxes6_3.Box = 'on';
+            app.UIAxes6_3.Position = [2 8 1069 226];
+
+            % Create ViewKvaluesTab
+            app.ViewKvaluesTab = uitab(app.TabGroup2);
+            app.ViewKvaluesTab.Title = 'View K values';
+            app.ViewKvaluesTab.BackgroundColor = [0.94 0.94 0.94];
+
+            % Create UIAxes6_5
+            app.UIAxes6_5 = uiaxes(app.ViewKvaluesTab);
+            title(app.UIAxes6_5, 'Title')
+            xlabel(app.UIAxes6_5, 'X')
+            ylabel(app.UIAxes6_5, 'Y')
+            zlabel(app.UIAxes6_5, 'Z')
+            app.UIAxes6_5.Box = 'on';
+            app.UIAxes6_5.Position = [2 8 1069 226];
+
+            % Create ViewFvaluesTab
+            app.ViewFvaluesTab = uitab(app.TabGroup2);
+            app.ViewFvaluesTab.Title = 'View F values';
+            app.ViewFvaluesTab.BackgroundColor = [0.94 0.94 0.94];
+
+            % Create UIAxes6_6
+            app.UIAxes6_6 = uiaxes(app.ViewFvaluesTab);
+            title(app.UIAxes6_6, 'Title')
+            xlabel(app.UIAxes6_6, 'X')
+            ylabel(app.UIAxes6_6, 'Y')
+            zlabel(app.UIAxes6_6, 'Z')
+            app.UIAxes6_6.Box = 'on';
+            app.UIAxes6_6.Position = [2 8 1069 226];
+
+            % Create ViewDailyHourlySapFluxDensityTab
+            app.ViewDailyHourlySapFluxDensityTab = uitab(app.TabGroup2);
+            app.ViewDailyHourlySapFluxDensityTab.Title = 'View Daily/Hourly Sap Flux Density';
+            app.ViewDailyHourlySapFluxDensityTab.BackgroundColor = [0.94 0.94 0.94];
+
+            % Create UIAxes6_7
+            app.UIAxes6_7 = uiaxes(app.ViewDailyHourlySapFluxDensityTab);
+            title(app.UIAxes6_7, 'Title')
+            xlabel(app.UIAxes6_7, 'X')
+            ylabel(app.UIAxes6_7, 'Y')
+            zlabel(app.UIAxes6_7, 'Z')
+            app.UIAxes6_7.Box = 'on';
+            app.UIAxes6_7.Position = [2 8 1069 226];
 
             % Create RawDataLabel
-            app.RawDataLabel = uilabel(app.GridLayout15);
-            app.RawDataLabel.Layout.Row = 7;
+            app.RawDataLabel = uilabel(app.GridLayout17);
+            app.RawDataLabel.FontWeight = 'bold';
+            app.RawDataLabel.Layout.Row = 9;
             app.RawDataLabel.Layout.Column = 1;
             app.RawDataLabel.Text = 'Raw Data';
 
             % Create PredictedDataLabel
-            app.PredictedDataLabel = uilabel(app.GridLayout15);
-            app.PredictedDataLabel.Layout.Row = 7;
+            app.PredictedDataLabel = uilabel(app.GridLayout17);
+            app.PredictedDataLabel.FontWeight = 'bold';
+            app.PredictedDataLabel.Layout.Row = 9;
             app.PredictedDataLabel.Layout.Column = 3;
             app.PredictedDataLabel.Text = 'Predicted Data';
 
             % Create ExportKvaluesButton
-            app.ExportKvaluesButton = uibutton(app.GridLayout15, 'push');
+            app.ExportKvaluesButton = uibutton(app.GridLayout17, 'push');
             app.ExportKvaluesButton.ButtonPushedFcn = createCallbackFcn(app, @ExportKvaluesButtonPushed2, true);
             app.ExportKvaluesButton.BackgroundColor = [0.0627 0.4314 0.3882];
             app.ExportKvaluesButton.FontColor = [1 1 1];
@@ -6507,7 +6755,7 @@ end
             app.ExportKvaluesButton.Text = 'ExportKvalues';
 
             % Create ExportFvaluesButton
-            app.ExportFvaluesButton = uibutton(app.GridLayout15, 'push');
+            app.ExportFvaluesButton = uibutton(app.GridLayout17, 'push');
             app.ExportFvaluesButton.ButtonPushedFcn = createCallbackFcn(app, @ExportFvaluesButtonPushed2, true);
             app.ExportFvaluesButton.BackgroundColor = [0.0314 0.302 0.2667];
             app.ExportFvaluesButton.FontColor = [1 1 1];
@@ -6516,9 +6764,27 @@ end
             app.ExportFvaluesButton.Text = 'ExportFvalues';
 
             % Create TextArea_2
-            app.TextArea_2 = uitextarea(app.GridLayout15);
-            app.TextArea_2.Layout.Row = 9;
+            app.TextArea_2 = uitextarea(app.GridLayout17);
+            app.TextArea_2.Layout.Row = 11;
             app.TextArea_2.Layout.Column = [1 5];
+
+            % Create ExportDailyWaterUse
+            app.ExportDailyWaterUse = uibutton(app.GridLayout17, 'push');
+            app.ExportDailyWaterUse.ButtonPushedFcn = createCallbackFcn(app, @ExportDailyWaterUseButtonPushed2, true);
+            app.ExportDailyWaterUse.BackgroundColor = [0.0471 0.3882 0.4392];
+            app.ExportDailyWaterUse.FontColor = [1 1 1];
+            app.ExportDailyWaterUse.Layout.Row = 6;
+            app.ExportDailyWaterUse.Layout.Column = 5;
+            app.ExportDailyWaterUse.Text = 'ExportSapFlux';
+
+            % Create ExportTypeDropDown
+            app.ExportTypeDropDown = uidropdown(app.GridLayout17);
+            app.ExportTypeDropDown.Items = {'Hourly', 'Daily'};
+            app.ExportTypeDropDown.FontColor = [0 0 0];
+            app.ExportTypeDropDown.BackgroundColor = [0.96 0.96 0.96];
+            app.ExportTypeDropDown.Layout.Row = 7;
+            app.ExportTypeDropDown.Layout.Column = 5;
+            app.ExportTypeDropDown.Value = 'Hourly';
 
             % Create ContextMenu
             app.ContextMenu = uicontextmenu(app.SapFlowerUIFigure);
