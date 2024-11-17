@@ -95,9 +95,9 @@ classdef SapFlower < matlab.apps.AppBase
         FinishEditingButton             matlab.ui.control.Button
         UndoDeletionButton              matlab.ui.control.Button
         DeletedTdataButton              matlab.ui.control.Button
-        UIAxes3                         matlab.ui.control.UIAxes
-        UIAxes4                         matlab.ui.control.UIAxes
         UIAxes5                         matlab.ui.control.UIAxes
+        UIAxes4                         matlab.ui.control.UIAxes
+        UIAxes3                         matlab.ui.control.UIAxes
         ModelTrainingTab                matlab.ui.container.Tab
         GridLayout14                    matlab.ui.container.GridLayout
         ScaleDataCheckBox               matlab.ui.control.CheckBox
@@ -291,6 +291,8 @@ classdef SapFlower < matlab.apps.AppBase
         UIFigure
         LastAction % A variable to store the last action ('delete' or 'inverse')
         ActionHistory = {}; % A cell array to store the history of actions
+        projectLoaded = false; % Tracks if a project has been loaded
+        isEdited = false;    % Tracks if the data has been edited
 
     end
 
@@ -3138,6 +3140,12 @@ end
                 msgbox('No subtraction actions to undo', 'Info', 'help');
             end
         end
+
+        function isEdited = checkIfDataEdited(app)
+            % Determine if there are any edits in DeletionHistory or SubtractionHistory
+            isEdited = ~isempty(app.DeletionHistory) || ~isempty(app.SubtractionHistory);
+        end
+
        
     end
 
@@ -3528,6 +3536,13 @@ end
                 % Measure and display the elapsed time
                 elapsedTime = toc;
                 msgbox(['Edited data saved to ', filePath, ' in ', num2str(elapsedTime), ' seconds.'], 'Success');
+
+                % Clear the edit histories
+                app.DeletionHistory = {};
+                app.SubtractionHistory = {};
+                app.DeletionIndex = 0;
+                app.SubtractionIndex = 0;
+                disp('Edited data saved and history cleared.');
             catch ME
                 % Display error message
                 msgbox(['Error saving the data: ', ME.message], 'Error', 'error');
@@ -4392,6 +4407,9 @@ end
                 previewData(app);
             end
             
+            % Mark the project as loaded
+            app.projectLoaded = true;
+
             app.OutputTextArea.Value = [app.OutputTextArea.Value; {['Project loaded from: ', app.ProjectFilePath]}];
             scroll(app.OutputTextArea, "bottom");
 
@@ -5525,31 +5543,45 @@ end
         % Close request function: SapFlowerUIFigure
         function SapFlowerUIFigureCloseRequest(app, event)
 
-                % Ask the user if they want to save the project and data
+            % Check if a project is loaded or data was edited
+            app.isEdited = checkIfDataEdited(app); % Call the method to check edit state
+            needsSavePrompt = app.projectLoaded || app.isEdited;
+        
+            if needsSavePrompt
+                % Prompt the user to save changes
                 choice = questdlg('Do you want to save the project and edited data before exiting?', ...
                     'Save Changes', ...
                     'Yes', 'No', 'Cancel', 'Cancel');
-            
+        
                 % Handle the user's response
                 switch choice
                     case 'Yes'
-                        % Call a method to save the project and data
-                        app.saveEditedData(); % Save edited data
-                        app.saveProject(); % Save project
+                        % Save edits if needed
+                        if app.isEdited
+                            app.saveEditedData();
+                        end
+                        if app.projectLoaded
+                            app.saveProject();
+                        end
                         disp('Project and data saved.');
-                        
+        
                     case 'No'
                         disp('Exiting without saving.');
-                        
+        
                     case 'Cancel'
                         % Prevent app closure
-                        disp('Exit canceled by the user.');
+                        app.TextArea_2.Value = [app.TextArea_2.Value; {'Exit canceled'}];
+                        scroll(app.TextArea_2, "bottom");
+                        app.OutputTextArea.Value = [app.OutputTextArea.Value; {'Exit canceled'}];
+                        scroll(app.OutputTextArea, "bottom");
                         return;
                 end
-            
-                % Delete the UIFigure to close the app
-                delete(app);
-            
+            end
+        
+            % Close the app if no prompt is needed or after handling prompt
+            disp('Exiting the app.');
+            delete(app);
+
         end
     end
 
@@ -6043,24 +6075,24 @@ end
             app.GridLayout13.RowSpacing = 3.5;
             app.GridLayout13.Padding = [1.5454531582919 3.5 1.5454531582919 3.5];
 
-            % Create UIAxes5
-            app.UIAxes5 = uiaxes(app.GridLayout13);
-            xlabel(app.UIAxes5, 'Time')
-            ylabel(app.UIAxes5, 'K detail')
-            zlabel(app.UIAxes5, 'Z')
-            app.UIAxes5.TickLength = [0.006 0.025];
-            app.UIAxes5.GridLineStyle = '-.';
-            app.UIAxes5.XColor = [0 0 0];
-            app.UIAxes5.XTick = [0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1];
-            app.UIAxes5.YColor = [0 0 0];
-            app.UIAxes5.YTick = [0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1];
-            app.UIAxes5.ZColor = [0 0 0];
-            app.UIAxes5.LineWidth = 0.25;
-            app.UIAxes5.Box = 'on';
-            app.UIAxes5.XGrid = 'on';
-            app.UIAxes5.YGrid = 'on';
-            app.UIAxes5.Layout.Row = 3;
-            app.UIAxes5.Layout.Column = [9 21];
+            % Create UIAxes3
+            app.UIAxes3 = uiaxes(app.GridLayout13);
+            xlabel(app.UIAxes3, 'Time')
+            ylabel(app.UIAxes3, 'dV Overview')
+            zlabel(app.UIAxes3, 'Z')
+            app.UIAxes3.TickLength = [0.006 0.025];
+            app.UIAxes3.GridLineWidth = 0.25;
+            app.UIAxes3.MinorGridLineWidth = 0.25;
+            app.UIAxes3.GridLineStyle = '-.';
+            app.UIAxes3.XColor = [0 0 0];
+            app.UIAxes3.YColor = [0 0 0];
+            app.UIAxes3.ZColor = [0 0 0];
+            app.UIAxes3.LineWidth = 0.25;
+            app.UIAxes3.Box = 'on';
+            app.UIAxes3.XGrid = 'on';
+            app.UIAxes3.YGrid = 'on';
+            app.UIAxes3.Layout.Row = 3;
+            app.UIAxes3.Layout.Column = [1 8];
 
             % Create UIAxes4
             app.UIAxes4 = uiaxes(app.GridLayout13);
@@ -6082,24 +6114,24 @@ end
             app.UIAxes4.Layout.Column = [1 21];
             app.UIAxes4.PickableParts = 'all';
 
-            % Create UIAxes3
-            app.UIAxes3 = uiaxes(app.GridLayout13);
-            xlabel(app.UIAxes3, 'Time')
-            ylabel(app.UIAxes3, 'dV Overview')
-            zlabel(app.UIAxes3, 'Z')
-            app.UIAxes3.TickLength = [0.006 0.025];
-            app.UIAxes3.GridLineWidth = 0.25;
-            app.UIAxes3.MinorGridLineWidth = 0.25;
-            app.UIAxes3.GridLineStyle = '-.';
-            app.UIAxes3.XColor = [0 0 0];
-            app.UIAxes3.YColor = [0 0 0];
-            app.UIAxes3.ZColor = [0 0 0];
-            app.UIAxes3.LineWidth = 0.25;
-            app.UIAxes3.Box = 'on';
-            app.UIAxes3.XGrid = 'on';
-            app.UIAxes3.YGrid = 'on';
-            app.UIAxes3.Layout.Row = 3;
-            app.UIAxes3.Layout.Column = [1 8];
+            % Create UIAxes5
+            app.UIAxes5 = uiaxes(app.GridLayout13);
+            xlabel(app.UIAxes5, 'Time')
+            ylabel(app.UIAxes5, 'K detail')
+            zlabel(app.UIAxes5, 'Z')
+            app.UIAxes5.TickLength = [0.006 0.025];
+            app.UIAxes5.GridLineStyle = '-.';
+            app.UIAxes5.XColor = [0 0 0];
+            app.UIAxes5.XTick = [0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1];
+            app.UIAxes5.YColor = [0 0 0];
+            app.UIAxes5.YTick = [0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1];
+            app.UIAxes5.ZColor = [0 0 0];
+            app.UIAxes5.LineWidth = 0.25;
+            app.UIAxes5.Box = 'on';
+            app.UIAxes5.XGrid = 'on';
+            app.UIAxes5.YGrid = 'on';
+            app.UIAxes5.Layout.Row = 3;
+            app.UIAxes5.Layout.Column = [9 21];
 
             % Create DeletedTdataButton
             app.DeletedTdataButton = uibutton(app.GridLayout13, 'push');
