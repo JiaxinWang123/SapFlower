@@ -313,7 +313,6 @@ methods (Access = public)
         % Set the app position
         app.SapFlowerUIFigure.Position = [centerX, centerY, appWidth, appHeight];
     end
-
 end
 
 %% Gapfilling and saving %%
@@ -5620,14 +5619,13 @@ end
             % Create SapFlowerUIFigure and hide until all components are created
             app.SapFlowerUIFigure = uifigure('Visible', 'off');
             app.SapFlowerUIFigure.Color = [0.651 0.651 0.651];
-            app.SapFlowerUIFigure.Position = [100 100 1210 728];
+            app.SapFlowerUIFigure.Position = [300 300 1210 728];
             app.SapFlowerUIFigure.Name = 'SapFlower';
             app.SapFlowerUIFigure.Icon = fullfile(pathToMLAPP, 'SapFlower.png');
             app.SapFlowerUIFigure.CloseRequestFcn = createCallbackFcn(app, @SapFlowerUIFigureCloseRequest, true);
             app.SapFlowerUIFigure.Scrollable = 'on';
             app.SapFlowerUIFigure.HandleVisibility = 'on';
             app.SapFlowerUIFigure.Tag = 'Version 1.0';
-            app.SapFlowerUIFigure.WindowStyle = 'modal';
 
             % Create FileMenu
             app.FileMenu = uimenu(app.SapFlowerUIFigure);
@@ -5860,7 +5858,6 @@ end
             app.Image.Layout.Row = [1 6];
             app.Image.Layout.Column = 12;
             app.Image.URL = 'https://github.com/JiaxinWang123/SapFlower';
-            app.Image.AltText = 'View the source code';
             app.Image.ImageSource = fullfile(pathToMLAPP, 'SapFlower.png');
 
             % Create UITable4
