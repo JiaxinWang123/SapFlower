@@ -95,9 +95,9 @@ classdef SapFlower < matlab.apps.AppBase
         FinishEditingButton             matlab.ui.control.Button
         UndoDeletionButton              matlab.ui.control.Button
         DeletedTdataButton              matlab.ui.control.Button
-        UIAxes5                         matlab.ui.control.UIAxes
-        UIAxes4                         matlab.ui.control.UIAxes
         UIAxes3                         matlab.ui.control.UIAxes
+        UIAxes4                         matlab.ui.control.UIAxes
+        UIAxes5                         matlab.ui.control.UIAxes
         ModelTrainingTab                matlab.ui.container.Tab
         GridLayout14                    matlab.ui.container.GridLayout
         ScaleDataCheckBox               matlab.ui.control.CheckBox
@@ -296,7 +296,25 @@ classdef SapFlower < matlab.apps.AppBase
 
     end
 
+%% Startup %%
+methods (Access = public)
+    function StartupFcn(app)
+        % Get screen size (primary monitor)
+        screenSize = get(0, 'ScreenSize'); % [left, bottom, width, height]
+        
+        % Get app window size
+        appWidth = app.SapFlowerUIFigure.Position(3);
+        appHeight = app.SapFlowerUIFigure.Position(4);
+        
+        % Calculate centered position
+        centerX = (screenSize(3) - appWidth) / 2;
+        centerY = (screenSize(4) - appHeight) / 2;
+        
+        % Set the app position
+        app.SapFlowerUIFigure.Position = [centerX, centerY, appWidth, appHeight];
+    end
 
+end
 
 %% Gapfilling and saving %%
 methods (Access = public)
@@ -4128,6 +4146,11 @@ end
     % Callbacks that handle component events
     methods (Access = private)
 
+        % Code that executes after component creation
+        function startupFcn(app)
+            StartupFcn(app);
+        end
+
         % Menu selected function: ShowlegendMenu
         function ShowlegendMenuSelected(app, event)
             legend(app.UIAxes4);
@@ -5604,6 +5627,7 @@ end
             app.SapFlowerUIFigure.Scrollable = 'on';
             app.SapFlowerUIFigure.HandleVisibility = 'on';
             app.SapFlowerUIFigure.Tag = 'Version 1.0';
+            app.SapFlowerUIFigure.WindowStyle = 'modal';
 
             % Create FileMenu
             app.FileMenu = uimenu(app.SapFlowerUIFigure);
@@ -5835,7 +5859,9 @@ end
             app.Image = uiimage(app.GridLayout16);
             app.Image.Layout.Row = [1 6];
             app.Image.Layout.Column = 12;
-            app.Image.ImageSource = fullfile(pathToMLAPP, 'SapFlower_white_bg.png');
+            app.Image.URL = 'https://github.com/JiaxinWang123/SapFlower';
+            app.Image.AltText = 'View the source code';
+            app.Image.ImageSource = fullfile(pathToMLAPP, 'SapFlower.png');
 
             % Create UITable4
             app.UITable4 = uitable(app.GridLayout16);
@@ -6075,24 +6101,24 @@ end
             app.GridLayout13.RowSpacing = 3.5;
             app.GridLayout13.Padding = [1.5454531582919 3.5 1.5454531582919 3.5];
 
-            % Create UIAxes3
-            app.UIAxes3 = uiaxes(app.GridLayout13);
-            xlabel(app.UIAxes3, 'Time')
-            ylabel(app.UIAxes3, 'dV Overview')
-            zlabel(app.UIAxes3, 'Z')
-            app.UIAxes3.TickLength = [0.006 0.025];
-            app.UIAxes3.GridLineWidth = 0.25;
-            app.UIAxes3.MinorGridLineWidth = 0.25;
-            app.UIAxes3.GridLineStyle = '-.';
-            app.UIAxes3.XColor = [0 0 0];
-            app.UIAxes3.YColor = [0 0 0];
-            app.UIAxes3.ZColor = [0 0 0];
-            app.UIAxes3.LineWidth = 0.25;
-            app.UIAxes3.Box = 'on';
-            app.UIAxes3.XGrid = 'on';
-            app.UIAxes3.YGrid = 'on';
-            app.UIAxes3.Layout.Row = 3;
-            app.UIAxes3.Layout.Column = [1 8];
+            % Create UIAxes5
+            app.UIAxes5 = uiaxes(app.GridLayout13);
+            xlabel(app.UIAxes5, 'Time')
+            ylabel(app.UIAxes5, 'K detail')
+            zlabel(app.UIAxes5, 'Z')
+            app.UIAxes5.TickLength = [0.006 0.025];
+            app.UIAxes5.GridLineStyle = '-.';
+            app.UIAxes5.XColor = [0 0 0];
+            app.UIAxes5.XTick = [0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1];
+            app.UIAxes5.YColor = [0 0 0];
+            app.UIAxes5.YTick = [0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1];
+            app.UIAxes5.ZColor = [0 0 0];
+            app.UIAxes5.LineWidth = 0.25;
+            app.UIAxes5.Box = 'on';
+            app.UIAxes5.XGrid = 'on';
+            app.UIAxes5.YGrid = 'on';
+            app.UIAxes5.Layout.Row = 3;
+            app.UIAxes5.Layout.Column = [9 21];
 
             % Create UIAxes4
             app.UIAxes4 = uiaxes(app.GridLayout13);
@@ -6114,24 +6140,24 @@ end
             app.UIAxes4.Layout.Column = [1 21];
             app.UIAxes4.PickableParts = 'all';
 
-            % Create UIAxes5
-            app.UIAxes5 = uiaxes(app.GridLayout13);
-            xlabel(app.UIAxes5, 'Time')
-            ylabel(app.UIAxes5, 'K detail')
-            zlabel(app.UIAxes5, 'Z')
-            app.UIAxes5.TickLength = [0.006 0.025];
-            app.UIAxes5.GridLineStyle = '-.';
-            app.UIAxes5.XColor = [0 0 0];
-            app.UIAxes5.XTick = [0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1];
-            app.UIAxes5.YColor = [0 0 0];
-            app.UIAxes5.YTick = [0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1];
-            app.UIAxes5.ZColor = [0 0 0];
-            app.UIAxes5.LineWidth = 0.25;
-            app.UIAxes5.Box = 'on';
-            app.UIAxes5.XGrid = 'on';
-            app.UIAxes5.YGrid = 'on';
-            app.UIAxes5.Layout.Row = 3;
-            app.UIAxes5.Layout.Column = [9 21];
+            % Create UIAxes3
+            app.UIAxes3 = uiaxes(app.GridLayout13);
+            xlabel(app.UIAxes3, 'Time')
+            ylabel(app.UIAxes3, 'dV Overview')
+            zlabel(app.UIAxes3, 'Z')
+            app.UIAxes3.TickLength = [0.006 0.025];
+            app.UIAxes3.GridLineWidth = 0.25;
+            app.UIAxes3.MinorGridLineWidth = 0.25;
+            app.UIAxes3.GridLineStyle = '-.';
+            app.UIAxes3.XColor = [0 0 0];
+            app.UIAxes3.YColor = [0 0 0];
+            app.UIAxes3.ZColor = [0 0 0];
+            app.UIAxes3.LineWidth = 0.25;
+            app.UIAxes3.Box = 'on';
+            app.UIAxes3.XGrid = 'on';
+            app.UIAxes3.YGrid = 'on';
+            app.UIAxes3.Layout.Row = 3;
+            app.UIAxes3.Layout.Column = [1 8];
 
             % Create DeletedTdataButton
             app.DeletedTdataButton = uibutton(app.GridLayout13, 'push');
@@ -6990,6 +7016,9 @@ end
 
             % Register the app with App Designer
             registerApp(app, app.SapFlowerUIFigure)
+
+            % Execute the startup function
+            runStartupFcn(app, @startupFcn)
 
             if nargout == 0
                 clear app
