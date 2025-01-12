@@ -19,13 +19,3 @@ Please note that functions for data smoothing have been disabled and will be mad
 ![Screenshot 2024-09-04 103339](https://github.com/user-attachments/assets/108c0d07-3a95-4f10-9de0-f05eaa7b2d06)
 
 ![Screenshot 2024-09-04 103452](https://github.com/user-attachments/assets/6baa753e-6df5-4461-be71-e43a1679b076)
-
-It supports dark theme if you have New Desktop for MATLAB (Beta) installed with MATLAB.
-
-![Screenshot 2024-09-13 083255](https://github.com/user-attachments/assets/03fc06fc-6653-4cd7-be10-fe16a432c544)
-
-![Screenshot 2024-09-13 083307](https://github.com/user-attachments/assets/5ae0b250-ee64-4436-a159-fd592bf36156)
-
-![Screenshot 2024-09-13 083352](https://github.com/user-attachments/assets/e6de0b6f-23de-4b23-b420-18d336630ee0)
-
-![Screenshot 2024-09-13 083542](https://github.com/user-attachments/assets/9222ca75-cac9-4a05-b6df-08f84694ce6c)
