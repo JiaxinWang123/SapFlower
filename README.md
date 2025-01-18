@@ -1,21 +1,26 @@
 # SapFlower
 
-The standalone GUI App was written in Matlab, and it is now completed and available at [Zenodo](https://zenodo.org/doi/10.5281/zenodo.13665919) and [Figshare](https://doi.org/10.6084/m9.figshare.27015787).
+The standalone GUI App was written in Matlab, and it is now completed and available at [Zenodo](https://zenodo.org/doi/10.5281/zenodo.13665919) and [Figshare](https://doi.org/10.6084/m9.figshare.27015787). 
+## The latest version will be available soon.
 
 Video Tutorial [here](https://zenodo.org/records/14183938/files/SapFlower_Video_Tutorial.mkv?download=1).
 
 Please note that functions for data smoothing have been disabled and will be made available soon.
 
-![SapFlower](https://github.com/JiaxinWang123/SapFlower/assets/98176596/15ed876f-8e04-4599-a930-81e870693b1e)
+![Screenshot 2025-01-18 102144](https://github.com/user-attachments/assets/5b41dce4-5fe1-4095-b942-3cd15d30c804)
 
-![Screenshot 2024-09-10 115039](https://github.com/user-attachments/assets/df37fe8f-e1f5-4b8c-94de-46e184c92a58)
 
-![Screenshot 2024-09-21 104513](https://github.com/user-attachments/assets/b930dd08-ceaa-4cae-bcab-69d4a4362224)
+![Screenshot 2025-01-17 213518](https://github.com/user-attachments/assets/cea90caf-fd07-468b-bb25-185ed61754ba)
 
-![Screenshot 2024-09-04 103308](https://github.com/user-attachments/assets/f72669a2-0d5a-4cc1-87e8-27f60e3be848)
+![Screenshot 2025-01-17 213722](https://github.com/user-attachments/assets/06a7e5ac-5257-4526-b810-49ddf227290e)
 
-![Screenshot 2024-09-04 103326](https://github.com/user-attachments/assets/20788d1f-d056-4762-9959-9bc9f35450d5)
+![Screenshot 2025-01-17 214157](https://github.com/user-attachments/assets/ad9e5522-c70d-48e8-82b1-1ab9a44f5b6b)
 
-![Screenshot 2024-09-04 103339](https://github.com/user-attachments/assets/108c0d07-3a95-4f10-9de0-f05eaa7b2d06)
+![Screenshot 2025-01-17 214517](https://github.com/user-attachments/assets/ec36a123-d793-45ed-a2ca-630a3eb28ef2)
 
-![Screenshot 2024-09-04 103452](https://github.com/user-attachments/assets/6baa753e-6df5-4461-be71-e43a1679b076)
+![Screenshot 2025-01-17 220734](https://github.com/user-attachments/assets/d88aeb1b-130d-49e2-b765-12951e4ee223)
+
+![Screenshot 2025-01-17 221103](https://github.com/user-attachments/assets/56c5d5b7-ce3f-4f5b-97b9-91debbeb5e0c)
+
+
+
