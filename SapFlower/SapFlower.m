@@ -95,9 +95,9 @@ classdef SapFlower < matlab.apps.AppBase
         FinishEditingButton             matlab.ui.control.Button
         UndoDeletionButton              matlab.ui.control.Button
         DeletedTdataButton              matlab.ui.control.Button
-        UIAxes5                         matlab.ui.control.UIAxes
-        UIAxes4                         matlab.ui.control.UIAxes
         UIAxes3                         matlab.ui.control.UIAxes
+        UIAxes4                         matlab.ui.control.UIAxes
+        UIAxes5                         matlab.ui.control.UIAxes
         ModelTrainingTab                matlab.ui.container.Tab
         GridLayout14                    matlab.ui.container.GridLayout
         ScaleDataCheckBox               matlab.ui.control.CheckBox
@@ -216,9 +216,9 @@ classdef SapFlower < matlab.apps.AppBase
         ClearButton                     matlab.ui.control.Button
         PasteButton                     matlab.ui.control.Button
         UITable6                        matlab.ui.control.Table
-        UIAxes8                         matlab.ui.control.UIAxes
-        UIAxes9                         matlab.ui.control.UIAxes
         UIAxes10                        matlab.ui.control.UIAxes
+        UIAxes9                         matlab.ui.control.UIAxes
+        UIAxes8                         matlab.ui.control.UIAxes
         ContextMenu                     matlab.ui.container.ContextMenu
         SmoothdataMenu                  matlab.ui.container.Menu
         WaveletTransformMenu            matlab.ui.container.Menu
@@ -5910,12 +5910,36 @@ end
                 timestamps = app.timestamp;
                 % Check if the timestamps are empty
                 if isempty(timestamps)
-                    % Create a pop-up message to notify the user
-                    uialert(app.SapFlowerUIFigure, 'Please load the data first.', 'Data Not Loaded', ...
-                        'Icon', 'warning', ...
-                        'CloseFcn', @(src, event)disp('Alert closed')); % Optional: Action after alert is closed
-                else
-                
+                    % Open a file selection dialog for the user to choose a CSV file
+                    [fileName, filePath] = uigetfile('*.csv', 'Select a CSV File with Timestamps');
+                    
+                    if isequal(fileName, 0) % Check if user canceled file selection
+                        uialert(app.SapFlowerUIFigure, 'No file selected. Please load a CSV file.', 'File Not Selected', ...
+                            'Icon', 'warning');
+                        return; % Exit the function if no file is selected
+                    end
+                    
+                    % Load the selected CSV file
+                    fullFileName = fullfile(filePath, fileName);
+                    try
+                        loadedData = readtable(fullFileName); % Read the CSV file into a table
+                        
+                        % Check if the TIMESTAMP column exists
+                        if ismember('TIMESTAMP', loadedData.Properties.VariableNames)
+                            % Assign timestamps from the CSV to the variable
+                            timestamps = loadedData.TIMESTAMP;
+                            app.timestamp = timestamps; % Update the app's timestamp property
+                        else
+                            uialert(app.SapFlowerUIFigure, 'The selected file does not contain a "TIMESTAMP" column.', ...
+                                'Invalid File', 'Icon', 'error');
+                            return; % Exit the function if the column is missing
+                        end
+                    catch
+                        uialert(app.SapFlowerUIFigure, 'Error reading the file. Please ensure it is a valid CSV.', ...
+                            'File Read Error', 'Icon', 'error');
+                        return; % Exit the function if file reading fails
+                    end
+
                     % Set the axes in the App Designer (UIAxes8)
                     ax = app.UIAxes8;
                     grid(ax, 'on');
@@ -6073,7 +6097,7 @@ end
                     app.UITable6.Data = exportData; % Update the UITable6 with the new data
             
                     % Optionally, update column names explicitly if needed
-                    app.UITable6.ColumnName = {'Timestamp', 'Weights', 'ActualSapwoodArea'}; % Ensure this includes all necessary column names
+                    app.UITable6.ColumnName = {'Timestamp', 'Weights'}; % Ensure this includes all necessary column names
                 
                     % Export to CSV
                     % writetable(exportData, 'csvFile.csv');
@@ -6218,7 +6242,7 @@ end
                     datetimeValues = datetime(timestamps, 'InputFormat', 'MM/dd/yyyy HH:mm');
             
                     % Plot the data
-                    plot(app.UIAxes9, datetimeValues, values, '-o', 'LineWidth', 2); % Plot on the UIAxes
+                    plot(app.UIAxes9, datetimeValues, values, 'r-', 'LineWidth', 1); % Plot on the UIAxes
                     xlabel(app.UIAxes9, 'Timestamp');
                     ylabel(app.UIAxes9, 'Weights');
                     title(app.UIAxes9, 'Weights from Pasted Data');
@@ -7342,24 +7366,24 @@ end
             app.GridLayout13.RowSpacing = 3.5;
             app.GridLayout13.Padding = [1.5454531582919 3.5 1.5454531582919 3.5];
 
-            % Create UIAxes3
-            app.UIAxes3 = uiaxes(app.GridLayout13);
-            xlabel(app.UIAxes3, 'Time')
-            ylabel(app.UIAxes3, 'dV Overview')
-            zlabel(app.UIAxes3, 'Z')
-            app.UIAxes3.TickLength = [0.006 0.025];
-            app.UIAxes3.GridLineWidth = 0.25;
-            app.UIAxes3.MinorGridLineWidth = 0.25;
-            app.UIAxes3.GridLineStyle = '-.';
-            app.UIAxes3.XColor = [0 0 0];
-            app.UIAxes3.YColor = [0 0 0];
-            app.UIAxes3.ZColor = [0 0 0];
-            app.UIAxes3.LineWidth = 0.25;
-            app.UIAxes3.Box = 'on';
-            app.UIAxes3.XGrid = 'on';
-            app.UIAxes3.YGrid = 'on';
-            app.UIAxes3.Layout.Row = 3;
-            app.UIAxes3.Layout.Column = [1 8];
+            % Create UIAxes5
+            app.UIAxes5 = uiaxes(app.GridLayout13);
+            xlabel(app.UIAxes5, 'Time')
+            ylabel(app.UIAxes5, 'K detail')
+            zlabel(app.UIAxes5, 'Z')
+            app.UIAxes5.TickLength = [0.006 0.025];
+            app.UIAxes5.GridLineStyle = '-.';
+            app.UIAxes5.XColor = [0 0 0];
+            app.UIAxes5.XTick = [0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1];
+            app.UIAxes5.YColor = [0 0 0];
+            app.UIAxes5.YTick = [0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1];
+            app.UIAxes5.ZColor = [0 0 0];
+            app.UIAxes5.LineWidth = 0.25;
+            app.UIAxes5.Box = 'on';
+            app.UIAxes5.XGrid = 'on';
+            app.UIAxes5.YGrid = 'on';
+            app.UIAxes5.Layout.Row = 3;
+            app.UIAxes5.Layout.Column = [9 21];
 
             % Create UIAxes4
             app.UIAxes4 = uiaxes(app.GridLayout13);
@@ -7381,24 +7405,24 @@ end
             app.UIAxes4.Layout.Column = [1 21];
             app.UIAxes4.PickableParts = 'all';
 
-            % Create UIAxes5
-            app.UIAxes5 = uiaxes(app.GridLayout13);
-            xlabel(app.UIAxes5, 'Time')
-            ylabel(app.UIAxes5, 'K detail')
-            zlabel(app.UIAxes5, 'Z')
-            app.UIAxes5.TickLength = [0.006 0.025];
-            app.UIAxes5.GridLineStyle = '-.';
-            app.UIAxes5.XColor = [0 0 0];
-            app.UIAxes5.XTick = [0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1];
-            app.UIAxes5.YColor = [0 0 0];
-            app.UIAxes5.YTick = [0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1];
-            app.UIAxes5.ZColor = [0 0 0];
-            app.UIAxes5.LineWidth = 0.25;
-            app.UIAxes5.Box = 'on';
-            app.UIAxes5.XGrid = 'on';
-            app.UIAxes5.YGrid = 'on';
-            app.UIAxes5.Layout.Row = 3;
-            app.UIAxes5.Layout.Column = [9 21];
+            % Create UIAxes3
+            app.UIAxes3 = uiaxes(app.GridLayout13);
+            xlabel(app.UIAxes3, 'Time')
+            ylabel(app.UIAxes3, 'dV Overview')
+            zlabel(app.UIAxes3, 'Z')
+            app.UIAxes3.TickLength = [0.006 0.025];
+            app.UIAxes3.GridLineWidth = 0.25;
+            app.UIAxes3.MinorGridLineWidth = 0.25;
+            app.UIAxes3.GridLineStyle = '-.';
+            app.UIAxes3.XColor = [0 0 0];
+            app.UIAxes3.YColor = [0 0 0];
+            app.UIAxes3.ZColor = [0 0 0];
+            app.UIAxes3.LineWidth = 0.25;
+            app.UIAxes3.Box = 'on';
+            app.UIAxes3.XGrid = 'on';
+            app.UIAxes3.YGrid = 'on';
+            app.UIAxes3.Layout.Row = 3;
+            app.UIAxes3.Layout.Column = [1 8];
 
             % Create DeletedTdataButton
             app.DeletedTdataButton = uibutton(app.GridLayout13, 'push');
@@ -8150,14 +8174,14 @@ end
             app.GridLayout20.Padding = [1.42857142857143 5 1.42857142857143 5];
             app.GridLayout20.BackgroundColor = [0.94 0.94 0.94];
 
-            % Create UIAxes10
-            app.UIAxes10 = uiaxes(app.GridLayout20);
-            title(app.UIAxes10, 'Title')
-            xlabel(app.UIAxes10, 'X')
-            ylabel(app.UIAxes10, 'Y')
-            zlabel(app.UIAxes10, 'Z')
-            app.UIAxes10.Layout.Row = 2;
-            app.UIAxes10.Layout.Column = [9 13];
+            % Create UIAxes8
+            app.UIAxes8 = uiaxes(app.GridLayout20);
+            title(app.UIAxes8, 'Title')
+            xlabel(app.UIAxes8, 'X')
+            ylabel(app.UIAxes8, 'Y')
+            zlabel(app.UIAxes8, 'Z')
+            app.UIAxes8.Layout.Row = 1;
+            app.UIAxes8.Layout.Column = [2 13];
 
             % Create UIAxes9
             app.UIAxes9 = uiaxes(app.GridLayout20);
@@ -8168,14 +8192,14 @@ end
             app.UIAxes9.Layout.Row = 2;
             app.UIAxes9.Layout.Column = [2 8];
 
-            % Create UIAxes8
-            app.UIAxes8 = uiaxes(app.GridLayout20);
-            title(app.UIAxes8, 'Title')
-            xlabel(app.UIAxes8, 'X')
-            ylabel(app.UIAxes8, 'Y')
-            zlabel(app.UIAxes8, 'Z')
-            app.UIAxes8.Layout.Row = 1;
-            app.UIAxes8.Layout.Column = [2 13];
+            % Create UIAxes10
+            app.UIAxes10 = uiaxes(app.GridLayout20);
+            title(app.UIAxes10, 'Title')
+            xlabel(app.UIAxes10, 'X')
+            ylabel(app.UIAxes10, 'Y')
+            zlabel(app.UIAxes10, 'Z')
+            app.UIAxes10.Layout.Row = 2;
+            app.UIAxes10.Layout.Column = [9 13];
 
             % Create UITable6
             app.UITable6 = uitable(app.GridLayout20);
