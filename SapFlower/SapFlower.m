@@ -6142,6 +6142,7 @@ end
             
             % Callback: Paste data into the table from clipboard
             function pasteData(app, ~)
+                clearPlot(app);
                 try
                     clipboardData = clipboard('paste'); % Get clipboard contents
                     disp('Clipboard Data:'); % Debugging line
