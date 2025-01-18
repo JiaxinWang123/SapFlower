@@ -31,7 +31,7 @@ classdef SapFlower < matlab.apps.AppBase
         UndoMenu                        matlab.ui.container.Menu
         UndoAllMenu                     matlab.ui.container.Menu
         ViewMenu                        matlab.ui.container.Menu
-        DarkModeMenu                    matlab.ui.container.Menu
+        DarkModeinMATLABMenu            matlab.ui.container.Menu
         LightModeMenu                   matlab.ui.container.Menu
         HelpMenu                        matlab.ui.container.Menu
         AboutMenu                       matlab.ui.container.Menu
@@ -45,12 +45,13 @@ classdef SapFlower < matlab.apps.AppBase
         TabGroup                        matlab.ui.container.TabGroup
         ProjectConfigurationTab         matlab.ui.container.Tab
         GridLayout16                    matlab.ui.container.GridLayout
+        SapFluxNetDataModeCheckBox      matlab.ui.control.CheckBox
+        SapFluxNet2SapFlowerButton      matlab.ui.control.Button
         OutputTextArea                  matlab.ui.control.TextArea
         DataPathButton                  matlab.ui.control.Button
         DataFilePathEditField           matlab.ui.control.EditField
         DefineDataFilePathLabel         matlab.ui.control.Label
         SaveAsProjectButton             matlab.ui.control.Button
-        ReservedLabel                   matlab.ui.control.Label
         VPDTimehLabel                   matlab.ui.control.Label
         MaxSapFlowLabel                 matlab.ui.control.Label
         VPDThresholdLabel               matlab.ui.control.Label
@@ -67,7 +68,6 @@ classdef SapFlower < matlab.apps.AppBase
         ProjectPathButton               matlab.ui.control.Button
         MaxSapFlowEditField             matlab.ui.control.NumericEditField
         VPDTimehEditField               matlab.ui.control.NumericEditField
-        ReservedEditField               matlab.ui.control.NumericEditField
         MinSapFlowEditField             matlab.ui.control.NumericEditField
         PARThresholdEditField           matlab.ui.control.NumericEditField
         VPDThresholdEditField           matlab.ui.control.NumericEditField
@@ -95,9 +95,9 @@ classdef SapFlower < matlab.apps.AppBase
         FinishEditingButton             matlab.ui.control.Button
         UndoDeletionButton              matlab.ui.control.Button
         DeletedTdataButton              matlab.ui.control.Button
-        UIAxes3                         matlab.ui.control.UIAxes
-        UIAxes4                         matlab.ui.control.UIAxes
         UIAxes5                         matlab.ui.control.UIAxes
+        UIAxes4                         matlab.ui.control.UIAxes
+        UIAxes3                         matlab.ui.control.UIAxes
         ModelTrainingTab                matlab.ui.container.Tab
         GridLayout14                    matlab.ui.container.GridLayout
         ScaleDataCheckBox               matlab.ui.control.CheckBox
@@ -161,11 +161,15 @@ classdef SapFlower < matlab.apps.AppBase
         LSTMNode                        matlab.ui.container.TreeNode
         BiLSTMNode                      matlab.ui.container.TreeNode
         RandomForestNode                matlab.ui.container.TreeNode
+        SupportVectorRegressionNode     matlab.ui.container.TreeNode
+        GaussianProcessRegressionNode   matlab.ui.container.TreeNode
+        KernelRegressionNode            matlab.ui.container.TreeNode
         StartTrainingButton             matlab.ui.control.Button
         OutputPathButton                matlab.ui.control.Button
         Output                          matlab.ui.control.EditField
         GapFillingTab                   matlab.ui.container.Tab
-        GridLayout17                    matlab.ui.container.GridLayout
+        GridLayout19                    matlab.ui.container.GridLayout
+        ExportWaterUseButton            matlab.ui.control.Button
         ExportTypeDropDown              matlab.ui.control.DropDown
         ExportDailyWaterUse             matlab.ui.control.Button
         TextArea_2                      matlab.ui.control.TextArea
@@ -195,6 +199,26 @@ classdef SapFlower < matlab.apps.AppBase
         RawDataButton                   matlab.ui.control.Button
         PredictedDataButton             matlab.ui.control.Button
         GapFillButton                   matlab.ui.control.Button
+        SapwoodAnalysisTab              matlab.ui.container.Tab
+        GridLayout20                    matlab.ui.container.GridLayout
+        TreeSensorNameEditField         matlab.ui.control.EditField
+        TreeSensorNameEditFieldLabel    matlab.ui.control.Label
+        BaseDateDatePicker              matlab.ui.control.DatePicker
+        BaseDateDatePickerLabel         matlab.ui.control.Label
+        EndSapWoodAreaEditField         matlab.ui.control.NumericEditField
+        EndSapWoodAreaEditFieldLabel    matlab.ui.control.Label
+        StartSapWoodAreaEditField       matlab.ui.control.NumericEditField
+        StartSapWoodAreaLabel           matlab.ui.control.Label
+        StartAnalysisButton             matlab.ui.control.Button
+        ScaleSapwoodButton              matlab.ui.control.Button
+        ExportSapwoodButton             matlab.ui.control.Button
+        CalculatePlotButton             matlab.ui.control.Button
+        ClearButton                     matlab.ui.control.Button
+        PasteButton                     matlab.ui.control.Button
+        UITable6                        matlab.ui.control.Table
+        UIAxes8                         matlab.ui.control.UIAxes
+        UIAxes9                         matlab.ui.control.UIAxes
+        UIAxes10                        matlab.ui.control.UIAxes
         ContextMenu                     matlab.ui.container.ContextMenu
         SmoothdataMenu                  matlab.ui.container.Menu
         WaveletTransformMenu            matlab.ui.container.Menu
@@ -290,9 +314,13 @@ classdef SapFlower < matlab.apps.AppBase
         PredictedSensors = {} % To store the list of sensors that have been predicted
         UIFigure
         LastAction % A variable to store the last action ('delete' or 'inverse')
-        ActionHistory = {}; % A cell array to store the history of actions
-        projectLoaded = false; % Tracks if a project has been loaded
-        isEdited = false;    % Tracks if the data has been edited
+        ActionHistory = {} % A cell array to store the history of actions
+        projectLoaded = false % Tracks if a project has been loaded
+        isEdited = false    % Tracks if the data has been edited
+        TimestampsValidation
+        TimestampsTrain
+        exportedWeights
+        resolutionField
 
     end
 
@@ -747,8 +775,6 @@ methods (Access = public)
         legend('show');
         hold off;
     end
-
-
 end
 
 %% Load trained model and make predictions %%
@@ -857,7 +883,6 @@ methods (Access = public)
             uialert(app.UIFigure, ['Error saving predictions: ', ME.message], 'Error');
         end
     end
-
 end
 
 %% Model Training and Prediction %%
@@ -922,7 +947,6 @@ methods (Access = public)
             rethrow(ME);
         end
     end
-
 
     function savePredictedDataWithVPDIndex(app, predictions, predictingVariableNames, validIdx, sensorName, modelType)
         try
@@ -1244,13 +1268,50 @@ methods (Access = public)
     
                 % Split the data into training and validation sets
                 validationSplit = app.SplitForValidationEditField.Value / 100;
+                
+                % Standardize random seed for consistent splits across sensors
+                rng(42, 'twister'); % Set a fixed seed (42 is just an example; you can use any integer)
+                
                 cv = cvpartition(length(Y), 'HoldOut', validationSplit);
-    
-                % Set properties for the training and validation data
-                app.XTrain = X(cv.training, :);
-                app.YTrain = Y(cv.training);
-                app.XValidation = X(cv.test, :);
-                app.YValidation = Y(cv.test, :);
+                
+                % Training set
+                trainIdx = find(cv.training); % Explicit indices
+                app.XTrain = X(trainIdx, :);
+                app.YTrain = Y(trainIdx);
+                app.TimestampsTrain = data.TIMESTAMP(validIdx(trainIdx)); % Ensure TIMESTAMP aligns with trainIdx
+                
+                % Validation set indices
+                validationIdx = find(cv.test); % Indices for validation set within filtered data
+                % Filter X and Y for validation
+                app.XValidation = X(validationIdx, :);
+                app.YValidation = Y(validationIdx);
+                
+                % Filter TIMESTAMP for validation
+                if length(data.TIMESTAMP) == length(validIdx)
+                    % Filter TIMESTAMP using validIdx
+                    filteredTimestamps = data.TIMESTAMP(validIdx);
+                
+                    % Align with validation data
+                    if length(filteredTimestamps) >= max(validationIdx)
+                        app.TimestampsValidation = filteredTimestamps(validationIdx);
+                    else
+                        error('Validation indices exceed the length of filtered timestamps.');
+                    end
+                else
+                    error('Mismatch between TIMESTAMP and validIdx lengths.');
+                end
+                
+                % disp('Filtered TIMESTAMP length:');
+                % disp(length(filteredTimestamps));
+                % disp('Validation TIMESTAMP length:');
+                % disp(length(app.TimestampsValidation));
+                % disp('Validation Y length:');
+                % disp(length(app.YValidation));
+
+                % Final validation check
+                if length(app.TimestampsValidation) ~= length(app.YValidation)
+                    error('Timestamps are missing or do not match the length of the validation data.');
+                end
     
                 % Train the selected model type
                 model = trainSelectedModel(app, modelType, size(app.XTrain, 2));
@@ -1453,7 +1514,7 @@ methods (Access = public)
             app.TextArea.Value = [app.TextArea.Value; sprintf('Training %s model...\n', modelType)];
             scroll(app.TextArea, 'bottom');
             drawnow;
-            
+    
             % Train the model based on the selected type
             switch modelType
                 case 'BiLSTM'
@@ -1499,10 +1560,19 @@ methods (Access = public)
                     % Create iddata object with cleaned data
                     armaxData = iddata(YTrainCleaned, XTrainCleaned);
                     model = armax(armaxData, [na nb nc nk]);
+                case 'Support Vector Regression'
+                    % Support Vector Regression model training
+                    model = trainSVRModel(app);
+                case 'Gaussian Process Regression'
+                    % Gaussian Process Regression model training
+                    model = trainGPRModel(app);
+                case 'Kernel Regression'
+                    % Kernel Regression model training
+                    model = trainKernelModel(app);
                 otherwise
                     error('Unsupported model type.');
             end
-            
+    
             % Update app.TextArea with training completion message
             app.TextArea.Value = [app.TextArea.Value; sprintf('%s model training completed.\n', modelType)];
             scroll(app.TextArea, 'bottom');
@@ -1517,7 +1587,6 @@ methods (Access = public)
             rethrow(ME);
         end
     end
-
 
     function displayLinearModelStats(app, model)
         try
@@ -1549,6 +1618,32 @@ methods (Access = public)
             msgbox(sprintf('An error occurred while displaying linear model statistics: %s', ME.message), 'Error', 'error');
             drawnow;
         end
+    end
+
+
+    function svrModel = trainSVRModel(app)
+        % X: feature matrix, y: target variable
+        svrModel = fitrsvm(app.XTrain, app.YTrain, 'KernelFunction', 'gaussian', 'Standardize', true);
+    end
+
+
+    function gprModel = trainGPRModel(app)
+        % X: feature matrix, y: target variable
+        gprModel = fitrgp(app.XTrain, app.YTrain, 'KernelFunction', 'squaredexponential');
+    end
+
+    
+    function kernelModel = trainKernelModel(app)
+        
+        % Define the kernel function (you can choose from several options like 'squaredexponential', 'matern52', etc.)
+        kernelFunction = 'squaredexponential';  % You can change this based on your preference
+        
+        % Train the model using the training data
+        kernelModel = fitrgp(app.XTrain, app.YTrain, 'KernelFunction', kernelFunction, 'Sigma', 1, 'FitMethod', 'sd');
+        
+        % The 'Sigma' parameter represents the noise variance, which you can adjust as needed
+        % The 'FitMethod' can be adjusted to use 'exact' or 'sd' based on your preference for computation
+        
     end
 
 
@@ -1674,7 +1769,6 @@ methods (Access = public)
             'OutputNetwork', 'best-validation-loss');
         
         net = trainNetwork(app.XTrain', app.YTrain', layers, options);
-
     end
 
 
@@ -1685,8 +1779,8 @@ methods (Access = public)
     
         disp('Random Forest model trained successfully.');
     end
-
-
+    
+    
     % Function to validate the model
     function validateModel(app, modelType, model, sensorName)
         try
@@ -1715,6 +1809,15 @@ methods (Access = public)
                     valData = iddata(app.YValidation, app.XValidation);
                     predictions = predict(model, valData, 1);  % 1-step ahead prediction
                     predictions = predictions.OutputData;      % Extract the output data
+                case 'Support Vector Regression'
+                    % SVR model prediction
+                    predictions = predict(model, app.XValidation);
+                case 'Gaussian Process Regression'
+                    % GPR model prediction
+                    predictions = predict(model, app.XValidation);
+                case 'Kernel Regression'
+                    % KER model prediction
+                    predictions = predict(model, app.XValidation);
                 otherwise
                     error('Unsupported model type.');
             end
@@ -1725,10 +1828,6 @@ methods (Access = public)
             % Reshape YValidation and predictions to ensure they are vectors
             app.YValidation = app.YValidation(:);  % Convert to column vector if not already
             predictions = predictions(:);          % Convert to column vector if not already
-    
-            % Debugging step: Check the size of the predictions and validation set
-            disp(size(app.YValidation));  % Should be [n, 1] where n is the number of data points
-            disp(size(predictions));      % Should be [n, 1]
     
             % Ensure both YValidation and predictions are the same size
             if length(app.YValidation) ~= length(predictions)
@@ -1742,10 +1841,6 @@ methods (Access = public)
             mae = mean(abs(predictionError));  % Mean Absolute Error (scalar)
             rmse = sqrt(mean(predictionError.^2));  % Root Mean Square Error (scalar)
     
-            % Debugging step: Confirm MAE and RMSE are scalar
-            disp(mae);
-            disp(rmse);
-    
             % Append the new MAE and RMSE to the existing text in TextArea
             summaryText = sprintf('Sensor %s - MAE: %.4f, RMSE: %.4f', sensorName, mae, rmse);
             if isempty(app.TextArea.Value)
@@ -1756,16 +1851,57 @@ methods (Access = public)
             scroll(app.TextArea, 'bottom');
             drawnow; % Ensure the TextArea updates immediately
     
-            % Plot true vs predicted for validation
+            % Plot true vs. predicted over time
+            % Custom colors for true and predicted data
+            trueLineColor = [0, 0.45, 0.74];    % Dark blue for true data
+            predictedLineColor = [0.85, 0.32, 0.1]; % Red for predicted data
+    
             figure;
-            plot(app.YValidation, 'b', 'DisplayName', 'True Data');
+            plot(app.TimestampsValidation, app.YValidation, ...
+                'Color', trueLineColor, 'LineWidth', 1.5, 'DisplayName', 'True Data'); % True data with custom color
             hold on;
-            plot(predictions, 'r--', 'DisplayName', 'Predicted Data');
-            xlabel('Time');
+            plot(app.TimestampsValidation, predictions, ...
+                '-.', 'Color', predictedLineColor, 'LineWidth', 1, 'DisplayName', 'Predicted Data'); % Predicted data with custom dashed line
+            xlabel('Timestamp');
             ylabel('Sapflow');
-            title(summaryText); % Use the summary text as the title
+            % Replace underscores with \_ to ensure correct display in the title
+            sensorNameFormatted = strrep(sensorName, '_', '\_');
+            title(sprintf('%s Model - Sensor %s\nTrue vs. Predicted Over Time', modelType, sensorNameFormatted));
             legend('show');
+            % Add MAE and RMSE to the bottom-right corner of the figure
+            text(max(app.TimestampsValidation), min(app.YValidation), ...
+                sprintf('MAE: %.4f\nRMSE: %.4f', mae, rmse), ...
+                'HorizontalAlignment', 'right', 'VerticalAlignment', 'bottom', ...
+                'BackgroundColor', 'white', 'EdgeColor', 'black');
+    
             hold off;
+    
+            % Define custom colors
+            scatterColor = [0.1, 0.5, 0.8]; % Light blue for scatter points
+            lineColor = [0.9, 0.3, 0.2];    % Orange-red for the 1:1 line
+    
+            % Scatter plot of true vs. predicted
+            figure;
+            scatter(app.YValidation, predictions, 36, scatterColor, 'o');  % Blue circles
+            hold on;
+            % Add 1:1 line
+            minVal = min(min(app.YValidation), min(predictions));
+            maxVal = max(max(app.YValidation), max(predictions));
+            plot([minVal, maxVal], [minVal, maxVal], '--', 'Color', lineColor, 'LineWidth', 1.5, 'DisplayName', '1:1 Line'); % Custom dashed line
+            hold off;
+    
+            xlabel('True Sapflow');
+            ylabel('Predicted Sapflow');
+            % Replace underscores with \_ to ensure correct display in the title
+            sensorNameFormatted = strrep(sensorName, '_', '\_');
+            title(sprintf('%s Model - Sensor %s\nTrue vs. Predicted scatter', modelType, sensorNameFormatted));
+            legend('show');
+            grid on;
+            % Add MAE and RMSE to the bottom-right corner of the scatter plot
+            text(max(app.YValidation), min(predictions), ...
+                sprintf('MAE: %.4f\nRMSE: %.4f', mae, rmse), ...
+                'HorizontalAlignment', 'right', 'VerticalAlignment', 'bottom', ...
+                'BackgroundColor', 'white', 'EdgeColor', 'black');
     
         catch ME
             % Handle any unexpected errors
@@ -1776,8 +1912,6 @@ methods (Access = public)
         end
     end
 
-
-    
     % Plot segmented data
     function plotSegmentedData(app, data, sensorColumns)
         try
@@ -1864,6 +1998,7 @@ methods (Access = public)
         end
     end
 
+
     % Function to remove short runs of consistent data points
     function cleanedData = removeShortRuns(~, sensorData, minRunLength)
         % Find all runs of consecutive non-NaN data
@@ -1882,7 +2017,8 @@ methods (Access = public)
             end
         end
     end
-   
+  
+
     function [predictions, predictingVariableNames, validIdx] = makePredictions(app, modelType, sensorName, scaleData)
         try
             % Start timing
@@ -1897,18 +2033,17 @@ methods (Access = public)
             if scaleData
                 scalingParams = modelData.scalingParams;
             end
-
     
             % Initialize validIdx to true
             validIdx = true(height(app.UITable4.Data), 1);
-    
+        
             % Determine valid indices based on the selected predicting variables
             for j = 1:length(predictingVariableNames)
                 columnName = predictingVariableNames{j};
                 columnData = app.UITable4.Data.(columnName);
                 disp('Predicting Variables:');
                 disp(predictingVariableNames);
-
+    
                 if isdatetime(columnData)
                     % Skip NaN check for datetime columns
                     continue;
@@ -1917,12 +2052,12 @@ methods (Access = public)
                     validIdx = validIdx & ~isnan(columnData);
                 end
             end
-    
+        
             % Ensure there are valid data points for making predictions
             if sum(validIdx) == 0
                 error('No valid data points found for making predictions.');
             end
-    
+        
             % Prepare the feature matrix X for prediction using the stored predicting variables
             X = [];
             for j = 1:length(predictingVariableNames)
@@ -1948,7 +2083,7 @@ methods (Access = public)
                     X = [X, columnData];
                 end
             end
-    
+        
             % Make predictions based on the model type
             switch modelType
                 case 'BiLSTM'
@@ -1967,18 +2102,24 @@ methods (Access = public)
                     outputData = fullY(validIdx);
                     outputDataCleaned = fillmissing(outputData, 'linear');
                     XCleaned = fillmissing(X, 'linear');
-    
+        
                     % Create iddata object with cleaned data
                     predictionData = iddata(outputDataCleaned, XCleaned);
                     arxPredictions = predict(model, predictionData, 1);
                     predictions = arxPredictions.OutputData;
+                case 'Support Vector Regression'  % Support Vector Regression
+                    predictions = predict(model, X);  % SVR uses `predict` directly
+                case 'Gaussian Process Regression'  % Gaussian Process Regression
+                    predictions = predict(model, X);
+                case 'Kernel Regression'  % Nonlinear Least Squares
+                    predictions = predict(model, X);
                 otherwise
                     error('Unsupported model type.');
             end
-    
+        
             % Ensure no negative values in the predictions
             predictions(predictions < 0) = 0;
-    
+        
             % Stop timing and get elapsed time
             elapsedTime = toc;
             % Update the TextArea with the prediction completion message
@@ -1996,6 +2137,7 @@ methods (Access = public)
             rethrow(ME);
         end
     end
+
 
     function savePredictedData(app, predictions, predictingVariableNames, validIdx, sensorName, modelType)
         try
@@ -2101,7 +2243,6 @@ methods (Access = public)
             end
         end
     end
-
 end
 
 %% Unility %%
@@ -5402,8 +5543,8 @@ end
             dialog.setVisible(true);
         end
 
-        % Menu selected function: DarkModeMenu
-        function DarkModeMenuSelected(app, event)
+        % Menu selected function: DarkModeinMATLABMenu
+        function DarkModeinMATLABMenuSelected(app, event)
             app.SapFlowerUIFigure.Theme = "dark";
         end
 
@@ -5603,7 +5744,1110 @@ end
             % Close the app if no prompt is needed or after handling prompt
             disp('Exiting the app.');
             delete(app);
+        end
 
+        % Button pushed function: SapFluxNet2SapFlowerButton
+        function SapFluxNet2SapFlowerButtonPushed(app, event)
+            % Prompt the user to select the source folder
+            sourceFolder = uigetdir(pwd, 'Select the Source Folder');
+            if sourceFolder == 0
+                app.OutputTextArea.Value = [app.OutputTextArea.Value; "No folder selected. Operation cancelled."];
+                scroll(app.OutputTextArea, "bottom");
+                return;
+            end
+        
+            % Define the output folder for results
+            outputFolder = fullfile(sourceFolder, 'SapFlower'); % Subfolder to save results
+        
+            % Create the output folder if it doesn't exist
+            if ~exist(outputFolder, 'dir')
+                mkdir(outputFolder);
+            end
+        
+            % Get a list of all CSV files in the folder
+            fileList = dir(fullfile(sourceFolder, '*.csv'));
+        
+            % Extract unique tree/sensor identifiers
+            fileNames = {fileList.name};
+            treeSensorMatches = cellfun(@(x) regexp(x, '^([A-Z_0-9]+)_', 'tokens', 'once'), fileNames, 'UniformOutput', false);
+            treeSensors = unique([treeSensorMatches{:}]); % Flatten and extract unique values
+        
+            % Create a waitbar for process visualization
+            hWaitBar = waitbar(0, 'Processing files... Please wait.');
+        
+            % List to store names of files missing the TIMESTAMP column
+            missingTimestampFiles = {};
+        
+            % Loop through each tree/sensor
+            for i = 1:length(treeSensors)
+                treeSensor = treeSensors{i};
+                msg = sprintf('Processing tree/sensor: %s', strrep(treeSensor, '_', '\_'));
+                app.OutputTextArea.Value = [app.OutputTextArea.Value; sprintf('Processing tree/sensor: %s', treeSensor)];
+                scroll(app.OutputTextArea, "bottom");
+                waitbar(i / length(treeSensors), hWaitBar, msg);
+        
+                % Get the env_data and sapf_data file names
+                envDataFile = fullfile(sourceFolder, [treeSensor, '_env_data.csv']);
+                sapfDataFile = fullfile(sourceFolder, [treeSensor, '_sapf_data.csv']);
+        
+                % Check if both files exist
+                if exist(envDataFile, 'file') && exist(sapfDataFile, 'file')
+                    % Read the CSV files
+                    envData = readtable(envDataFile);
+                    sapfData = readtable(sapfDataFile);
+        
+                    % Normalize column names
+                    envData.Properties.VariableNames = strtrim(envData.Properties.VariableNames);
+                    sapfData.Properties.VariableNames = strtrim(sapfData.Properties.VariableNames);
+        
+                    % Check for the TIMESTAMP column
+                    if ismember('TIMESTAMP', envData.Properties.VariableNames) && ...
+                       ismember('TIMESTAMP', sapfData.Properties.VariableNames)
+                        % Merge the tables based on the TIMESTAMP column
+                        mergedData = outerjoin(envData, sapfData, 'Keys', 'TIMESTAMP', 'MergeKeys', true);
+        
+                        % Reformat the TIMESTAMP column
+                        mergedData.TIMESTAMP = erase(mergedData.TIMESTAMP, 'Z'); % Remove 'Z' if present
+                        mergedData.TIMESTAMP = datetime(mergedData.TIMESTAMP, 'InputFormat', 'yyyy-MM-dd''T''HH:mm:ss');
+                        mergedData.DOY = day(mergedData.TIMESTAMP, 'dayofyear');
+        
+                        % Rename netrad to PAR_Den_Avg if ppfd_in does not exist
+                        if ~ismember('ppfd_in', mergedData.Properties.VariableNames) && ...
+                           ismember('netrad', mergedData.Properties.VariableNames)
+                            mergedData.Properties.VariableNames{strcmp(mergedData.Properties.VariableNames, 'netrad')} = 'PAR_Den_Avg';
+                        end
+        
+                        % Rename specific columns
+                        newColumnNames = {'vpd', 'rh', 'ta', 'ppfd_in'};
+                        newColumnLabels = {'VPD', 'RH', 'AirTC_Avg', 'PAR_Den_Avg'};
+                        for idx = 1:length(newColumnNames)
+                            if ismember(newColumnNames{idx}, mergedData.Properties.VariableNames)
+                                mergedData.Properties.VariableNames{strcmp(mergedData.Properties.VariableNames, newColumnNames{idx})} = newColumnLabels{idx};
+                                app.OutputTextArea.Value = [app.OutputTextArea.Value; ...
+                                    sprintf("Renamed '%s' to '%s'", newColumnNames{idx}, newColumnLabels{idx})];
+                                scroll(app.OutputTextArea, "bottom");
+                            end
+                        end
+        
+                        % Format the TIMESTAMP to 'MM/dd/yyyy HH:mm'
+                        formattedTimestamp = datestr(mergedData.TIMESTAMP, 'mm/dd/yyyy HH:MM');
+                        mergedData.TIMESTAMP = formattedTimestamp; % Replace original TIMESTAMP with formatted one
+        
+                        % Save the merged and reformatted data to a new CSV file
+                        outputFileName = fullfile(outputFolder, [treeSensor, '_merged_data.csv']);
+                        writetable(mergedData, outputFileName);
+                        app.OutputTextArea.Value = [app.OutputTextArea.Value; sprintf('Merged data saved to: %s', outputFileName)];
+                        scroll(app.OutputTextArea, "bottom");
+                    else
+                        app.OutputTextArea.Value = [app.OutputTextArea.Value; ...
+                            sprintf('TIMESTAMP column not found in one or both files for tree/sensor: %s', treeSensor)];
+                        scroll(app.OutputTextArea, "bottom");
+                        missingTimestampFiles{end+1} = struct('TreeSensor', treeSensor, ...
+                            'EnvDataFile', envDataFile, 'SapfDataFile', sapfDataFile);
+                    end
+                else
+                    app.OutputTextArea.Value = [app.OutputTextArea.Value; ...
+                        sprintf('Missing env_data or sapf_data file for tree/sensor: %s', treeSensor)];
+                    scroll(app.OutputTextArea, "bottom");
+                end
+            end
+        
+            % Save missing files report
+            if ~isempty(missingTimestampFiles)
+                reportFile = fullfile(outputFolder, 'MissingTimestampFilesReport.txt');
+                fid = fopen(reportFile, 'w');
+                fprintf(fid, 'Files Missing TIMESTAMP Column:\n');
+                for k = 1:length(missingTimestampFiles)
+                    fprintf(fid, 'Tree/Sensor: %s\n', missingTimestampFiles{k}.TreeSensor);
+                    fprintf(fid, '  Env Data File: %s\n', missingTimestampFiles{k}.EnvDataFile);
+                    fprintf(fid, '  Sapf Data File: %s\n\n', missingTimestampFiles{k}.SapfDataFile);
+                end
+                fclose(fid);
+                app.OutputTextArea.Value = [app.OutputTextArea.Value; sprintf('Report saved to: %s', reportFile)];
+                scroll(app.OutputTextArea, "bottom");
+            end
+        
+            % Close the waitbar
+            close(hWaitBar);
+        
+            % Open the SapFlower folder
+            app.OutputTextArea.Value = [app.OutputTextArea.Value; 'Processing complete. Opening the SapFlower folder...'];
+            scroll(app.OutputTextArea, "bottom");
+            if ispc
+                winopen(outputFolder);
+            elseif ismac
+                system(['open ', outputFolder]);
+            elseif isunix
+                system(['xdg-open ', outputFolder]);
+            end
+        end
+
+        % Value changed function: SapFluxNetDataModeCheckBox
+        function SapFluxNetDataModeCheckBoxValueChanged(app, event)
+            isChecked = app.SapFluxNetDataModeCheckBox.Value; % Get checkbox state
+            
+            % Buttons to disable/enable
+            buttonsToDisable = [app.ExportTypeDropDown, app.ExportDailyWaterUse, app.ExportFvaluesButton, app.ExportKvaluesButton]; % Replace with actual button names
+        
+            if isChecked
+                % Disable buttons
+                set(buttonsToDisable, 'Enable', 'off');
+            else
+                % Enable buttons
+                set(buttonsToDisable, 'Enable', 'on');
+            end
+            drawnow;            
+        end
+
+        % Button pushed function: StartAnalysisButton
+        function StartAnalysisButtonPushed(app, event)
+            % If no CSV file is specified, set a default filename
+            try
+                if nargin < 1
+                    csvFile = 'exportedData.csv';
+                end
+                
+                timestamps = app.timestamp;
+                % Check if the timestamps are empty
+                if isempty(timestamps)
+                    % Create a pop-up message to notify the user
+                    uialert(app.SapFlowerUIFigure, 'Please load the data first.', 'Data Not Loaded', ...
+                        'Icon', 'warning', ...
+                        'CloseFcn', @(src, event)disp('Alert closed')); % Optional: Action after alert is closed
+                else
+                
+                    % Set the axes in the App Designer (UIAxes8)
+                    ax = app.UIAxes8;
+                    grid(ax, 'on');
+                    hold(ax, 'on'); % Ensure that the grid is preserved during drawing
+                    xlabel(ax, 'Timestamp');
+                    ylabel(ax, 'Weights (0-1)');
+                    title(ax, 'Draw weights for Sapwood area increment across the study period: Click and Drag to Draw');
+                    ylim(ax, [0, 1]);
+                    cla(ax);
+                    % Set the X-axis limits with the numeric datenum values
+                    numericTimestamps = datenum(timestamps); % Convert datetime to numeric
+                    xlim(ax, [numericTimestamps(1), numericTimestamps(end)]); % Set axis limits
+                    
+                    % Set the X-axis ticks and labels to display datetime format
+                    xticks(ax, linspace(numericTimestamps(1), numericTimestamps(end), 10)); % Set 10 ticks along X-axis
+                    xticklabels(ax, datestr(xticks(ax), 'yyyy-mm-dd HH:MM:ss')); % Format as datetime
+                    
+                    % Disable default interactions on the axes
+                    disableDefaultInteractivity(ax);
+                    
+                    % Initialize the UITable6 in the App Designer
+                    app.UITable6.Data = {}; % Set initial empty data for the table
+                    app.UITable6.ColumnName = {'Timestamp', 'Weights'}; % Set column names
+                    app.UITable6.ColumnEditable = [true, true]; % Allow both columns to be edited
+                    app.UITable6.CellEditCallback = @updatePlotFromTable; % Callback to update plot
+                    
+                    % Initialize an empty table to store drawing data
+                    drawingTable = app.UITable6; % Reference the table in App Designer
+                    
+                    % Initialize variables
+                    isDrawing = false; % Flag to track if drawing is active
+                    lineHandle = []; % Handle for the line being drawn
+                    drawnData = []; % Array to store the drawn points
+                    isRedrawing = false; % Flag to track if a redraw is happening
+                    
+                    % Set the callback to start drawing when mouse button is pressed on the figure
+                    set(ax, 'ButtonDownFcn', @startDrawing);
+                    clearPlot(app);
+                end
+
+            catch err
+                disp('Error initializing the plot or table.');
+                disp(err.message);
+            end
+            
+            % Callback: Start drawing when the user clicks
+            function startDrawing(~, ~)
+                try
+                    if isRedrawing
+                        % If we are redrawing, clear the previous line
+                        delete(lineHandle); % Delete the previous line before starting a new one
+                        drawnData = []; % Clear the previous drawn data
+                        isRedrawing = false; % Reset the redrawing flag
+                    end
+                
+                    clickedPoint = get(ax, 'CurrentPoint'); % Get the starting point
+                    x = clickedPoint(1, 1);
+                    y = clickedPoint(1, 2);
+                
+                    % Ensure the point is within the valid range
+                    if x >= numericTimestamps(1) && x <= numericTimestamps(end) && y >= 0 && y <= 1
+                        % Initialize the line
+                        lineHandle = plot(ax, x, y, 'r-', 'LineWidth', 1.5);
+                        drawnData = [x, y];
+                        isDrawing = true; % Set drawing flag
+                
+                        % Set mouse motion callback
+                        set(gcf, 'WindowButtonMotionFcn', @continueDrawing);
+                        set(gcf, 'WindowButtonUpFcn', @stopDrawing); % Set the callback to stop drawing
+                    end
+                catch err
+                    disp('Error starting the drawing process.');
+                    disp(err.message);
+                end
+            end
+            
+            % Callback: Continue drawing as the user moves the mouse
+            function continueDrawing(~, ~)
+                try
+                    if isDrawing
+                        currentPoint = get(ax, 'CurrentPoint'); % Get the current mouse position
+                        x = currentPoint(1, 1);
+                        y = currentPoint(1, 2);
+                
+                        % Append the point if it's in the valid range
+                        if x >= numericTimestamps(1) && x <= numericTimestamps(end) && y >= 0 && y <= 1
+                            drawnData = [drawnData; x, y];
+                            % Update the line data
+                            set(lineHandle, 'XData', drawnData(:, 1), 'YData', drawnData(:, 2));
+                        end
+                    end
+                catch err
+                    disp('Error continuing the drawing process.');
+                    disp(err.message);
+                end
+            end
+            
+            % Callback: Stop drawing when the user releases the mouse
+            function stopDrawing(~, ~)
+                try
+                    if ~isDrawing
+                        return; % Exit if drawing was never started
+                    end
+                
+                    isDrawing = false; % Reset the drawing flag
+                
+                    % Clear the motion and button up callbacks to stop drawing
+                    set(gcf, 'WindowButtonMotionFcn', '');
+                    set(gcf, 'WindowButtonUpFcn', '');
+                
+                    % Ensure there is data in drawnData before proceeding
+                    if isempty(drawnData)
+                        disp('No data was drawn, stopping.');
+                        return; % Exit if no data is present
+                    end
+                
+                    % Convert numeric timestamps back to datetime for the table
+
+                    timestampsData = datetime(drawnData(:, 1), 'ConvertFrom', 'datenum');
+                
+                    % Remove duplicate timestamps before interpolation
+                    [timestampsData, uniqueIndices] = unique(timestampsData);
+                    interpValues = drawnData(uniqueIndices, 2); % Corresponding values for unique timestamps
+                
+                    % Update the table with drawn points
+                    drawingTable.Data = [cellstr(timestampsData), num2cell(interpValues)];
+                
+                    % Generate one-minute intervals
+                    startTime = timestampsData(1);
+                    endTime = timestampsData(end);
+                    oneMinuteIntervals = startTime:minutes(1):endTime;
+                
+                    % Interpolate values to match one-minute intervals
+                    interpValues = interp1(timestampsData, interpValues, oneMinuteIntervals, 'linear', 'extrap');
+                
+                    % Pad NaT at the beginning to match the full time range before drawing
+                    nanValuesBefore = NaN * ones(1, find(oneMinuteIntervals == timestampsData(1)) - 1);
+                    oneMinuteIntervals = [NaT(ones(1, length(nanValuesBefore))), oneMinuteIntervals];
+                    interpValues = [nanValuesBefore, interpValues];
+                
+                    % Pad NaT at the end to match the full time range after drawing
+                    nanValuesAfter = NaN * ones(1, length(oneMinuteIntervals) - length(interpValues));
+                    interpValues = [interpValues, nanValuesAfter];
+                
+                    % Ensure both arrays (oneMinuteIntervals and interpValues) are of the same length
+                    maxLength = max(length(oneMinuteIntervals), length(interpValues));
+                    oneMinuteIntervals = [oneMinuteIntervals, NaT(ones(1, maxLength - length(oneMinuteIntervals)))];
+                    interpValues = [interpValues, NaN * ones(1, maxLength - length(interpValues))];
+                
+                    % Prepare data for export
+                    exportData = table(oneMinuteIntervals', interpValues', 'VariableNames', {'Timestamp', 'Weights'});
+                    app.exportedWeights = exportData;
+
+                    % Update the drawing table in the UI with new data
+                    app.UITable6.Data = exportData; % Update the UITable6 with the new data
+            
+                    % Optionally, update column names explicitly if needed
+                    app.UITable6.ColumnName = {'Timestamp', 'Weights', 'ActualSapwoodArea'}; % Ensure this includes all necessary column names
+                
+                    % Export to CSV
+                    % writetable(exportData, 'csvFile.csv');
+                
+                    % Display confirmation message
+                    disp('Data has been saved to CSV.');
+                
+                    % Reset isRedrawing flag
+                    isRedrawing = true;
+                catch err
+                    disp('Error stopping the drawing process or saving data.');
+                    disp(err.message);
+                end
+            end
+
+            % Set the callback for the Paste button (app.PasteButton)
+            app.PasteButton.ButtonPushedFcn = @(src, event) pasteData(app);
+        
+            % Set the callback for the Clear Plot button (app.ClearPlotButton)
+            app.ClearButton.ButtonPushedFcn = @(src, event) clearPlot(app);
+
+            % Callback: Clear the plot and reset the drawing state
+            function clearPlot(app)
+                if ishandle(lineHandle)
+                    delete(lineHandle); % Delete the existing line
+                end
+            
+                % Reset the drawing data and table
+                drawnData = [];
+                app.UITable6.Data = {}; % Clear the table
+                grid(app.UIAxes8, 'on'); % Optional: reset grid
+            
+                % Reset the drawing state
+                isDrawing = false; % Ensure drawing state is reset
+                set(app.UIFigure, 'WindowButtonMotionFcn', ''); % Clear mouse motion callback
+                set(app.UIFigure, 'WindowButtonDownFcn', '');   % Clear mouse down callback
+                set(app.UIFigure, 'WindowButtonUpFcn', '');     % Clear mouse up callback
+                app.exportedWeights = {};
+                
+                try
+                    % Clear app.UIAxes9
+                    cla(app.UIAxes9); % Clear the contents of UIAxes9
+                    title(app.UIAxes9, ''); % Remove the title
+                    xlabel(app.UIAxes9, ''); % Remove the x-label
+                    ylabel(app.UIAxes9, ''); % Remove the y-label
+                    grid(app.UIAxes9, 'off'); % Turn off the grid (optional)
+                    
+                    % Clear the table
+                    app.UITable6.Data = {}; % Clear the data in the table
+
+                    % Clear app.UIAxes10
+                    cla(app.UIAxes10); % Clear the contents of UIAxes10
+                    title(app.UIAxes10, ''); % Remove the title
+                    xlabel(app.UIAxes10, ''); % Remove the x-label
+                    ylabel(app.UIAxes10, ''); % Remove the y-label
+                    grid(app.UIAxes10, 'off'); % Turn off the grid (optional)
+                    
+                    % Clear other states or variables if necessary
+                    disp('Axes and table cleared successfully.');
+                catch err
+                    disp('Error clearing axes and table.');
+                    disp(err.message);
+                end
+
+            end
+            
+            % Callback: Paste data into the table from clipboard
+            function pasteData(app, ~)
+                try
+                    clipboardData = clipboard('paste'); % Get clipboard contents
+                    disp('Clipboard Data:'); % Debugging line
+                    disp(clipboardData); % Display clipboard content for inspection
+            
+                    % Split the clipboard data by newline (rows)
+                    clipboardData = strsplit(clipboardData, '\n');
+            
+                    % Initialize an array to store valid data
+                    dataMatrix = {};
+            
+                    % Parse each row into Timestamp and Value
+                    for i = 1:length(clipboardData)
+                        % Skip empty rows
+                        if isempty(strtrim(clipboardData{i}))
+                            continue;
+                        end
+            
+                        % Split each row by tab
+                        rowData = strsplit(clipboardData{i}, '\t');
+            
+                        % Check if row has two parts (Timestamp and Value)
+                        if length(rowData) == 2
+                            % Clean up any leading/trailing spaces
+                            timestamp = strtrim(rowData{1});
+                            value = strtrim(rowData{2});
+            
+                            % Validate the value (numeric)
+                            value = str2double(value);
+            
+                            if ~isnan(value) && ~isempty(timestamp)
+                                % Add to the data matrix
+                                dataMatrix{end+1, 1} = timestamp; % Timestamp
+                                dataMatrix{end, 2} = value;       % Value
+                            end
+                        end
+                    end
+            
+                    % Update the table with the cleaned data
+                    if ~isempty(dataMatrix)
+                        app.UITable6.Data = dataMatrix; % Use the table handle from App Designer
+                        disp('Updated Table Data:'); % Debugging line
+                        disp(app.UITable6.Data); % Display the table data for inspection
+                        app.UITable6.ColumnName = {'Timestamp', 'Weights', 'ActualSapwoodArea'}; % Ensure this includes all necessary column names
+                        % Call updatePlotFromTable to refresh the plot
+                        updatePlotFromTable(app);
+                    else
+                        disp('Error: No valid data in clipboard.');
+                    end
+                    app.exportedWeights = {};
+                catch
+                    disp('Error pasting data from clipboard.');
+                end
+            end
+
+            % Callback: Update the plot from the table
+            function updatePlotFromTable(app, ~)
+                try
+                    % Get data from the table
+                    tableData = app.UITable6.Data; % Use the table handle from App Designer
+            
+                    % Check if data is empty
+                    if isempty(tableData)
+                        disp('Error: Table is empty, no data to plot.');
+                        return;
+                    end
+            
+                    % Extract the timestamp and value columns
+                    timestamps = tableData(:, 1); % First column: Timestamps
+                    values = cell2mat(tableData(:, 2)); % Second column: Values (convert from cell to matrix)
+            
+                    % Convert timestamps to datetime format
+                    datetimeValues = datetime(timestamps, 'InputFormat', 'MM/dd/yyyy HH:mm');
+            
+                    % Plot the data
+                    plot(app.UIAxes9, datetimeValues, values, '-o', 'LineWidth', 2); % Plot on the UIAxes
+                    xlabel(app.UIAxes9, 'Timestamp');
+                    ylabel(app.UIAxes9, 'Weights');
+                    title(app.UIAxes9, 'Weights from Pasted Data');
+                    grid(app.UIAxes9, 'on');
+            
+                    disp('Plot updated successfully.');
+                catch err
+                    disp('Error updating plot from table.');
+                    disp(err.message);
+                end
+            end
+        end
+
+        % Button pushed function: CalculatePlotButton
+        function CalculatePlotButtonPushed(app, event)
+            try
+                % Get the start and end sapwood area values from the edit fields
+                StartSapwoodArea = app.StartSapWoodAreaEditField.Value;
+                EndSapwoodArea = app.EndSapWoodAreaEditField.Value;
+                
+                % Check if either StartSapwoodArea or EndSapwoodArea is zero
+                if StartSapwoodArea == 0 || EndSapwoodArea == 0
+                    uialert(app.SapFlowerUIFigure, ...
+                        'StartSapwoodArea and EndSapwoodArea cannot be 0. Please define their values before proceeding.', ...
+                        'Missing Sapwood Area Values', ...
+                        'Icon', 'info'); % Informational alert
+                    return; % Stop execution
+                end
+                
+                % Check if app.UITable6.Data is a table
+                if istable(app.UITable6.Data)
+                    dataTable6 = app.UITable6.Data; % If already a table, use it directly
+                else
+                    % Otherwise, convert the data to a table (assuming columns are named 'Timestamp' and 'Weights')
+                    dataArray = app.UITable6.Data;
+                    dataTable6 = array2table(dataArray, 'VariableNames', {'Timestamp', 'Weights'});
+                end
+                
+                % Check if app.exportedWeights is empty
+                if isempty(app.exportedWeights)
+                    % If app.exportedWeights is empty, use data from app.UITable6
+                    dataTable = dataTable6;
+                else
+                    % If app.exportedWeights is not empty, use app.exportedWeights
+                    dataTable = app.exportedWeights;
+                end
+                
+                % Check if dataTable is a table and contains the required columns
+                if ~istable(dataTable) || ~all(ismember({'Timestamp', 'Weights'}, dataTable.Properties.VariableNames))
+                    uialert(app.SapFlowerUIFigure, ...
+                        'Table must contain "Timestamp" and "Weights" columns.', ...
+                        'Invalid Table', ...
+                        'Icon', 'error'); % Error alert
+                    return;
+                end
+                
+                % Call the calculation function
+                updatedTable = calculateSapwoodAreaFromUI(dataTable, StartSapwoodArea, EndSapwoodArea);
+                
+                % Update the UITable with the new data
+                app.UITable6.Data = updatedTable;
+                
+                % Ensure the column name is visible in the UITable header
+                if ~ismember('ActualSapwoodArea', updatedTable.Properties.VariableNames)
+                    updatedTable.ActualSapwoodArea = NaN(height(updatedTable), 1); % Add a placeholder if necessary
+                end
+                
+                % Plot the ActualSapwoodArea on app.UIAxes10
+                % Ensure timestamps are in datetime format
+                timestamps = updatedTable.Timestamp;
+                
+                % Check if timestamps is a cell array, and convert it
+                try
+                    if iscell(timestamps)
+                        timestamps = datetime(timestamps, 'InputFormat', 'MM/dd/yyyy HH:mm');
+                    end
+                catch timestampError
+                    uialert(app.SapFlowerUIFigure, ...
+                        'Error converting timestamps. Please check the timestamp format.', ...
+                        'Invalid Timestamp', ...
+                        'Icon', 'error'); % Error alert
+                    disp(timestampError.message);
+                    return;
+                end
+                
+                % Extract the sapwood area
+                sapwoodArea = updatedTable.ActualSapwoodArea;
+                
+                % Clear the axes before plotting
+                cla(app.UIAxes10);
+                
+                % Plot the data
+                try
+                    plot(app.UIAxes10, timestamps, sapwoodArea, 'b-', 'LineWidth', 0.5);
+                catch plotError
+                    uialert(app.SapFlowerUIFigure, ...
+                        'Error while plotting the data. Please check the inputs.', ...
+                        'Plot Error', ...
+                        'Icon', 'error'); % Error alert
+                    disp(plotError.message);
+                    return;
+                end
+                
+                % Configure the axes
+                grid(app.UIAxes10, 'on');
+                xlabel(app.UIAxes10, 'Timestamp');
+                ylabel(app.UIAxes10, 'Sapwood Area');
+                title(app.UIAxes10, 'Sapwood Area Over Time');
+                
+                % Optional: Rotate the X-axis ticks for better readability
+                ax = app.UIAxes10;
+                ax.XTickLabelRotation = 45;
+                
+            catch generalError
+                uialert(app.SapFlowerUIFigure, ...
+                    'An unexpected error occurred. Please try again.', ...
+                    'Error', ...
+                    'Icon', 'error'); % Error alert
+                disp(generalError.message);
+            end
+        
+            function updatedTable = calculateSapwoodAreaFromUI(dataTable, StartSapwoodArea, EndSapwoodArea)
+                try
+                    % Validate inputs
+                    if ~all(ismember({'Timestamp', 'Weights'}, dataTable.Properties.VariableNames))
+                        error('The table must contain "Timestamp" and "Weights" columns.');
+                    end
+        
+                    % Calculate the Increment (constant for all rows)
+                    Increment = EndSapwoodArea - StartSapwoodArea;
+        
+                    % Ensure the Value column is numeric
+                    if iscell(dataTable.Weights)
+                        % If 'Weights' is a cell array, convert it to numeric
+                        dataTable.Weights = cell2mat(dataTable.Weights);
+                    elseif ~isnumeric(dataTable.Weights)
+                        % If it's not already numeric, try converting it to numeric
+                        dataTable.Weights = str2double(dataTable.Weights);
+                    end
+        
+                    % Calculate the totalValue as the sum of the numeric 'Weights' column
+                    totalValue = sum(dataTable.Weights);
+        
+                    % Initialize the ActualSapwoodArea column
+                    ActualSapwoodArea = zeros(height(dataTable), 1);
+        
+                    % Loop through each row to calculate the ActualSapwoodArea
+                    for i = 1:height(dataTable)
+                        if i == 1
+                            % For the first timestamp, use the starting sapwood area
+                            ActualSapwoodArea(i) = StartSapwoodArea + Increment * dataTable.Weights(i) / totalValue;
+                        else
+                            % For subsequent timestamps, add the increment to the previous area
+                            ActualSapwoodArea(i) = ActualSapwoodArea(i-1) + Increment * dataTable.Weights(i) / totalValue;
+                        end
+                    end
+        
+                    % Add the calculated ActualSapwoodArea to the table
+                    dataTable.ActualSapwoodArea = ActualSapwoodArea;
+        
+                    % Return the updated table
+                    updatedTable = dataTable;
+                catch calcError
+                    uialert(app.SapFlowerUIFigure, ...
+                        'Error during sapwood area calculation.', ...
+                        'Calculation Error', ...
+                        'Icon', 'error'); % Error alert
+                    disp(calcError.message);
+                end
+            end
+        end
+
+        % Button pushed function: ExportSapwoodButton
+        function ExportSapwoodButtonPushed(app, event)
+            try
+                % Check if TreeSensorNameEditField.Value is empty
+                if isempty(app.TreeSensorNameEditField.Value)
+                    uialert(app.SapFlowerUIFigure, ...
+                        'Please define the Tree Sensor Name before exporting.', ...
+                        'Missing Sensor Name', ...
+                        'Icon', 'info'); % Informational alert
+                    return; % Stop execution
+                end
+                
+                % Check if app.UITable6.Data is a table
+                if ~istable(app.UITable6.Data)
+                    % Convert app.UITable6.Data to a table if it's not already a table
+                    dataArray = app.UITable6.Data;
+                    if isempty(dataArray)
+                        uialert(app.SapFlowerUIFigure, ...
+                            'Table is empty. Cannot export.', ...
+                            'Export Error', ...
+                            'Icon', 'info'); % Informational alert
+                        return;
+                    end
+                    % Assuming columns are named 'Timestamp', 'Weights', and 'ActualSapwoodArea'
+                    dataTable = array2table(dataArray, 'VariableNames', {'Timestamp', 'Weights', 'ActualSapwoodArea'});
+                else
+                    dataTable = app.UITable6.Data;
+                end
+                
+                % Update the third column name
+                sapwoodColumnName = ['SapwoodArea_' app.TreeSensorNameEditField.Value];
+                dataTable.Properties.VariableNames{3} = sapwoodColumnName;
+                
+                % Prompt the user to select a file location and name
+                [fileName, filePath] = uiputfile('*.csv', 'Save Table as CSV');
+                if isequal(fileName, 0) || isequal(filePath, 0)
+                    % User canceled the export
+                    return;
+                end
+                
+                % Construct the full file path
+                fullFileName = fullfile(filePath, fileName);
+                
+                % Write the table to a CSV file
+                writetable(dataTable, fullFileName);
+                
+                % Notify the user of a successful export (Informational alert)
+                uialert(app.SapFlowerUIFigure, ...
+                    'Table successfully exported to CSV.', ...
+                    'Export Successful', ...
+                    'Icon', 'info');
+            catch exportError
+                % Handle errors during export
+                uialert(app.SapFlowerUIFigure, ...
+                    'An error occurred while exporting the table.', ...
+                    'Export Error', ...
+                    'Icon', 'error'); % Error icon for unexpected issues
+                disp(exportError.message);
+            end
+        end
+
+        % Button pushed function: ScaleSapwoodButton
+        function ScaleSapwoodButtonPushed(app, event)
+            % Check if baseDate is defined and is a valid datetime
+            if isempty(app.BaseDateDatePicker.Value) || isnat(app.BaseDateDatePicker.Value)
+                uialert(app.SapFlowerUIFigure, 'Please select a valid base date before proceeding.', 'Base Date Missing or Invalid');
+                return; % Exit the function to prevent further execution
+            else
+                disp('User has selected a date:');
+                disp(app.BaseDateDatePicker.Value); % Display the selected date
+            end
+            
+            if isempty(app.TreeSensorNameEditField.Value)
+                uialert(app.SapFlowerUIFigure, 'Please Define Tree/Sensor name', 'Tree/Sensor name missing or invalid');
+                return; % Exit the function to prevent further execution
+
+            end
+
+            SinounalModel(app);
+
+            function SinounalModel(app)
+
+                % Create a UI figure for user input
+                % Get the screen size
+                screenSize = get(0, 'ScreenSize');
+                
+                % Define the figure dimensions
+                figWidth = 500;
+                figHeight = 400;
+                
+                % Calculate the position to center the figure
+                figX = (screenSize(3) - figWidth) / 2;
+                figY = (screenSize(4) - figHeight) / 2;
+                
+                % Create the figure centered on the screen
+                fig = uifigure('Name', 'SapFlower Logistic Function Fitting', 'Position', [figX, figY, figWidth, figHeight]);
+
+                % Add numeric edit field for user to define resolution
+                app.resolutionField = uieditfield(fig, 'numeric', ...
+                    'Position', [350, 240, 100, 30], ...
+                    'Value', 5000); % Default value is 5000
+
+                % Create the label
+                label = uilabel(fig, ...
+                    'Text', 'FinerPredictions', ...
+                    'Position', [350, 275, 100, 30], ... % [x, y, width, height]
+                    'HorizontalAlignment', 'left', ...
+                    'FontSize', 12);
+
+                % Create the label
+                label = uilabel(fig, ...
+                    'Text', 'Please paste at least 6 pairs of your sapwood area data. Typed data will not work.', ...
+                    'Position', [20, 350, 400, 40], ... % Increased height to accommodate two lines
+                    'HorizontalAlignment', 'left', ...
+                    'FontSize', 12, ...
+                    'WordWrap', 'on');  % Ensure text wraps properly
+
+
+                % Create a table for user data input
+                uit = uitable(fig, 'Data', cell(6, 2), ...
+                    'ColumnName', {'DOY', 'SapwoodArea'}, ...
+                    'ColumnEditable', [true, true], ...
+                    'Position', [20, 100, 300, 200]);
+            
+                % Add a button to submit data
+                uibutton(fig, 'Position', [350, 190, 100, 30], ...
+                    'Text', 'Submit Data', ...
+                    'ButtonPushedFcn', @(btn, event) submitData(fig, uit, app));
+            
+                % Add a button to paste data from clipboard
+                uibutton(fig, 'Position', [350, 130, 100, 30], ...
+                    'Text', 'Paste Data', ...
+                    'ButtonPushedFcn', @(btn, event) pasteData(fig, uit));
+            end
+            
+            % Function to paste data from clipboard into the table
+            function pasteData(fig, uit)
+                % Get the clipboard content
+                clipboardData = clipboard('paste');
+                disp('Clipboard Data:');
+                disp(clipboardData);
+            
+                % Split clipboard data into rows and columns (assuming tab-separated data)
+                rows = strsplit(clipboardData, '\n');
+                parsedData = cell(length(rows), 2);
+            
+                for i = 1:length(rows)
+                    cols = strsplit(strtrim(rows{i}), '\t');
+                    disp(['Row ', num2str(i), ':']);
+                    disp(cols);
+            
+                    if length(cols) == 2
+                        % Attempt to convert the data to numeric, replace NaN with 0
+                        parsedData{i, 1} = str2double(cols{1}); % DOY
+                        if isnan(parsedData{i, 1})
+                            parsedData{i, 1} = 0; % Replace with default value or handle as needed
+                        end
+            
+                        parsedData{i, 2} = str2double(cols{2}); % SapwoodArea
+                        if isnan(parsedData{i, 2})
+                            parsedData{i, 2} = 0; % Replace with default value or handle as needed
+                        end
+                    end
+                end
+            
+                disp('Parsed Data:');
+                disp(parsedData);
+            
+                % Set the valid data in the table
+                uit.Data = parsedData;
+            end
+            
+            function submitData(fig, uit, app)
+                % Extract user data from the table
+                data = uit.Data;
+                try
+                    % Convert input data to numeric arrays
+                    DOY = cell2mat(data(:, 1));  % Assuming data is already numeric
+                    SapwoodArea = cell2mat(data(:, 2));  % Assuming data is already numeric
+            
+                    % Check for any NaN values that may result from invalid conversions
+                    if any(isnan(DOY)) || any(isnan(SapwoodArea))
+                        uialert(fig, 'Please ensure that all input values are numeric.', 'Data Error');
+                        return;
+                    end
+                catch
+                    uialert(fig, 'Invalid data format. Please ensure numeric values.', 'Data Error');
+                    return;
+                end
+            
+                % Ensure at least 6 data points are provided
+                if numel(DOY) < 6 || numel(SapwoodArea) < 6
+                    uialert(fig, 'Please provide at least 6 data points.', 'Insufficient Data');
+                    return;
+                end
+            
+                % Retrieve user input for resolution (number of points for Ti_fine)
+                numPoints = round(app.resolutionField.Value);  % Ensure it's an integer
+            
+                % Check for valid resolution input
+                if numPoints < 6
+                    uialert(fig, 'Resolution must be at least 6.', 'Invalid Resolution');
+                    return;
+                end
+            
+                % Fit the logistic model and predict
+                fitAndPredictLogistic(DOY, SapwoodArea, app, numPoints);
+            end
+            
+            function fitAndPredictLogistic(Ti, Li, app, numPoints)
+                % Define the logistic model function
+                logisticModel = @(params, T) params(1) ./ (1 + exp(-params(2) * (T - params(3))));
+            
+                % Initial guess for parameters [Lmax, k, T0]
+                initialParams = [max(Li), 0.1, mean(Ti)];
+            
+                % Fit the logistic function using lsqcurvefit
+                options = optimset('Display', 'off');
+                fitParams = lsqcurvefit(@(params, T) logisticModel(params, T), ...
+                                        initialParams, Ti, Li, [], [], options);
+            
+                % Extract fitted parameters
+                Lmax = fitParams(1);
+                k = fitParams(2);
+                T0 = fitParams(3);
+            
+                % Display fitted parameters
+                disp('Fitted Parameters:');
+                fprintf('Lmax (Carrying Capacity): %.4f\n', Lmax);
+                fprintf('k (Growth Rate): %.4f\n', k);
+                fprintf('T0 (Inflection Point): %.4f\n', T0);
+            
+                % Predict values over a finer interval of Ti using user-defined resolution
+                Ti_fine = linspace(min(Ti), max(Ti), numPoints)';
+                Li_pred = logisticModel(fitParams, Ti_fine);
+            
+                % Convert DOY to datetime
+                timestamps = doyToDatetime(Ti_fine, app); % Ensure the `app` object is passed here
+            
+                % Plot the results
+                figure;
+                plot(Ti, Li, 'o', 'LineWidth', 1.5, 'DisplayName', 'Observed Data');
+                hold on;
+                plot(Ti_fine, Li_pred, '-', 'LineWidth', 1.5, 'DisplayName', 'Logistic Fit');
+                xlabel('DOY');
+                ylabel('SapwoodArea');
+                title('Logistic Function Fitting');
+                legend;
+                grid on;
+            
+                % Add text annotation for fitted parameters
+                annotationString = sprintf('Lmax: %.4f\nk: %.4f\nT0: %.4f', Lmax, k, T0);
+                text(max(Ti) - range(Ti) * 0.3, max(Li) * 0.9, annotationString, ...
+                    'VerticalAlignment', 'top', 'BackgroundColor', 'white', ...
+                    'EdgeColor', 'black', 'Margin', 5);
+            
+                % Get the TreeSensorName value from the EditField
+                sensorName = app.TreeSensorNameEditField.Value;
+                
+                % Create the column name dynamically
+                columnName = ['SapwoodArea_' sensorName];
+                
+                % Create the predicted table with the dynamic column name
+                predictedTable = table(timestamps, Li_pred, ...
+                    'VariableNames', {'Timestamp', columnName});
+
+            
+                % Prompt user to select the save location for the CSV file
+                [fileName, pathName] = uiputfile('*.csv', 'Save Predicted SapwoodArea As');
+            
+                % Check if user canceled the file dialog
+                if isequal(fileName, 0)
+                    disp('User canceled the file save operation.');
+                    return;
+                end
+            
+                % Full path to the file
+                fullFileName = fullfile(pathName, fileName);
+            
+                % Save the table to the selected CSV file
+                writetable(predictedTable, fullFileName);
+                disp(['Predicted SapwoodArea saved to "', fullFileName, '".']);
+            end
+
+            
+            % Function to convert DOY to datetime
+            function datetimeValues = doyToDatetime(DOY, app)
+                % Assign the value to baseDate
+                % Check if baseDate is defined
+                if isempty(app.BaseDateDatePicker.Value) || isnat(app.BaseDateDatePicker.Value)
+                    uialert(app.SapFlowerUIFigure, 'Please select a valid base date before proceeding.', 'Base Date Missing or Invalid');
+                else
+                    disp('User has selected a date:');
+                    disp(app.BaseDateDatePicker.Value); % Display the selected date
+                end
+                
+                % Assign the value to baseDate
+                baseDate = app.BaseDateDatePicker.Value;
+            
+                % Preallocate datetime array
+                datetimeValues = NaT(size(DOY));
+            
+                for i = 1:length(DOY)
+                    % Extract the integer part (day of the year)
+                    dayOfYear = floor(DOY(i));
+            
+                    % Extract the fractional part (time of day)
+                    timeFraction = DOY(i) - dayOfYear;
+            
+                    % Calculate the time in hours, minutes, and seconds
+                    totalSeconds = timeFraction * 24 * 60 * 60; % Convert fraction to seconds
+                    hoursVal = floor(totalSeconds / 3600);
+                    minutesVal = floor((totalSeconds - hoursVal * 3600) / 60);
+            
+                    % Add the time to the base date
+                    datetimeValues(i) = baseDate + days(dayOfYear - 1) + hours(hoursVal) + minutes(minutesVal);
+                end
+            end
+        end
+
+        % Button pushed function: ExportWaterUseButton
+        function ExportWaterUseButtonPushed(app, event)
+            OutFolder = char(app.Output.Value);
+            checkOutputPath(app);
+            try
+                % Prompt user to select a folder containing Sapwood files
+                % Set the output folder
+                OutputFolder = OutFolder;                
+                Table2Folder = uigetdir(pwd, 'Select Folder Containing SapwoodArea Files');
+                if Table2Folder == 0
+                    error('No folder selected. Operation cancelled.');
+                end
+            
+                % Find CSV files in the selected Sapwood folder
+                Table2Files = dir(fullfile(Table2Folder, '*.csv'));
+                if isempty(Table2Files)
+                    error('No CSV files found in the selected Sapwood folder.');
+                end
+            
+                % Table1 is located in the ExportedFvalue subfolder under app.OutputFolder
+                Table1Folder = fullfile(OutputFolder, 'ExportedFvalue');
+                Table1Files = dir(fullfile(Table1Folder, '*.csv')); % Find all Table1 CSV files
+            
+                if isempty(Table1Files)
+                    error('No CSV files found in the ExportedFvalue subfolder.');
+                end
+            
+                % Define the path for the WaterUse subfolder under app.OutputFolder
+                WaterUseFolder = fullfile(char(OutputFolder), 'WaterUse');
+            
+                % Create the WaterUse subfolder if it doesn't already exist
+                if ~exist(WaterUseFolder, 'dir')
+                    mkdir(WaterUseFolder);
+                end
+            
+                % Iterate over all Table1 files
+                for Table1Idx = 1:length(Table1Files)
+                    try
+                        % Read the current Table1 file
+                        Table1File = fullfile(Table1Files(Table1Idx).folder, Table1Files(Table1Idx).name);
+                        Table1 = readtable(Table1File);
+            
+                        % Ensure the timestamp column in Table1 is in datetime format
+                        Table1.TIMESTAMP = datetime(Table1.TIMESTAMP, 'InputFormat', 'yyyy-MM-dd HH:mm:ss'); % Adjust as needed
+            
+                        % Iterate over all Table2 files
+                        for Table2Idx = 1:length(Table2Files)
+                            try
+                                % Read the current Table2 file
+                                Table2File = fullfile(Table2Files(Table2Idx).folder, Table2Files(Table2Idx).name);
+                                Table2 = readtable(Table2File);
+            
+                                % Rename the timestamp column in Table2 to match Table1
+                                if any(strcmpi(Table2.Properties.VariableNames, 'Timestamp'))
+                                    Table2.Properties.VariableNames{strcmpi(Table2.Properties.VariableNames, 'Timestamp')} = 'TIMESTAMP';
+                                end
+            
+                                % Ensure the timestamp column in Table2 is in datetime format
+                                if any(strcmp(Table2.Properties.VariableNames, 'TIMESTAMP'))
+                                    Table2.TIMESTAMP = datetime(Table2.TIMESTAMP, 'InputFormat', 'yyyy-MM-dd HH:mm:ss'); % Adjust as needed
+                                else
+                                    warning('File %s does not contain a TIMESTAMP column and will be skipped.', Table2Files(Table2Idx).name);
+                                    continue;
+                                end
+            
+                                % Filter Table1 to only include timestamps within the range of Table2
+                                minTime = min(Table2.TIMESTAMP);
+                                maxTime = max(Table2.TIMESTAMP);
+                                validRows = Table1.TIMESTAMP >= minTime & Table1.TIMESTAMP <= maxTime;
+            
+                                if ~any(validRows)
+                                    warning('No matching timestamps in Sapfluxdata (F) for file %s. Skipping.', Table2Files(Table2Idx).name);
+                                    continue;
+                                end
+            
+                                % Subset Table1 to valid rows
+                                FilteredTable1 = Table1(validRows, :);
+            
+                                % Convert datetime columns to numeric format for knnsearch
+                                Table1Numeric = datenum(FilteredTable1.TIMESTAMP);
+                                Table2Numeric = datenum(Table2.TIMESTAMP);
+            
+                                % Find the nearest timestamps in Table2 for each timestamp in Table1
+                                [idx, ~] = knnsearch(Table2Numeric, Table1Numeric);
+            
+                                % Subset Table2 based on the matched indices
+                                FilteredTable2 = Table2(idx, :);
+            
+                                % Ensure the timestamps match correctly
+                                FilteredTable2.TIMESTAMP = FilteredTable1.TIMESTAMP;
+            
+                                % Merge the filtered Table2 data with Table1
+                                MergedTable = join(FilteredTable1, FilteredTable2, 'Keys', 'TIMESTAMP');
+            
+                                % Identify columns that are sap flux values in Table1 (e.g., F_B1_13849)
+                                F_columns = MergedTable.Properties.VariableNames(startsWith(MergedTable.Properties.VariableNames, 'F_'));
+            
+                                % Loop over the sap flux columns and find matching sapwood area columns in Table2
+                                for i = 1:length(F_columns)
+                                    % Extract the component from the F_column (e.g., B1_13849)
+                                    component = F_columns{i}(3:end);  % Remove 'F_' from the column name
+            
+                                    % Find the matching SapwoodArea column in Table2 (e.g., SapwoodArea_B1_13849)
+                                    matchingColumn = ['SapwoodArea_' component];
+            
+                                    % Check if the matching column exists in Table2
+                                    if ismember(matchingColumn, FilteredTable2.Properties.VariableNames)
+                                        % Create a new column for WaterUse (e.g., WaterUse_B1_13849)
+                                        WaterUseColumnName = ['WaterUse_' component];
+            
+                                        % Perform the multiplication: F_B1_13849 * SapwoodArea_B1_13849
+                                        MergedTable.(WaterUseColumnName) = MergedTable.(F_columns{i}) .* FilteredTable2.(matchingColumn);
+            
+                                        % Define the full path for saving the current merged table
+                                        OutputFile = fullfile(WaterUseFolder, sprintf('MergedTableWithWaterUse_%s_%s.csv', Table1Files(Table1Idx).name, component));
+            
+                                        % Save the merged table to the WaterUse subfolder
+                                        writetable(MergedTable, OutputFile);
+                                    end
+                                end
+                            catch ME2
+                                warning('An error occurred while processing file %s:\n%s', Table2Files(Table2Idx).name, ME2.message);
+                                continue;
+                            end
+                        end
+                    catch ME1
+                        warning('An error occurred while processing Table1 file %s:\n%s', Table1Files(Table1Idx).name, ME1.message);
+                        continue;
+                    end
+                end
+            
+                % Display a popup message to notify the user
+                msgbox(sprintf('All valid tables have been processed and saved to:\n%s', WaterUseFolder), 'Process Completed');
+            
+            catch ME
+                % Display an error message with the cause of the error
+                errordlg(sprintf('An error occurred:\n%s', ME.message), 'Error');
+            end
         end
     end
 
@@ -5776,11 +7020,11 @@ end
             app.ViewMenu.ForegroundColor = [0 0 0];
             app.ViewMenu.Text = 'View';
 
-            % Create DarkModeMenu
-            app.DarkModeMenu = uimenu(app.ViewMenu);
-            app.DarkModeMenu.MenuSelectedFcn = createCallbackFcn(app, @DarkModeMenuSelected, true);
-            app.DarkModeMenu.ForegroundColor = [0 0 0];
-            app.DarkModeMenu.Text = 'DarkMode';
+            % Create DarkModeinMATLABMenu
+            app.DarkModeinMATLABMenu = uimenu(app.ViewMenu);
+            app.DarkModeinMATLABMenu.MenuSelectedFcn = createCallbackFcn(app, @DarkModeinMATLABMenuSelected, true);
+            app.DarkModeinMATLABMenu.ForegroundColor = [0 0 0];
+            app.DarkModeinMATLABMenu.Text = 'DarkMode (in MATLAB)';
 
             % Create LightModeMenu
             app.LightModeMenu = uimenu(app.ViewMenu);
@@ -5915,17 +7159,6 @@ end
             app.MinSapFlowEditField.Layout.Row = 4;
             app.MinSapFlowEditField.Layout.Column = 5;
 
-            % Create ReservedEditField
-            app.ReservedEditField = uieditfield(app.GridLayout16, 'numeric');
-            app.ReservedEditField.AllowEmpty = 'on';
-            app.ReservedEditField.Editable = 'off';
-            app.ReservedEditField.BackgroundColor = [0.9412 0.9412 0.9412];
-            app.ReservedEditField.Enable = 'off';
-            app.ReservedEditField.Placeholder = 'N/A';
-            app.ReservedEditField.Layout.Row = 6;
-            app.ReservedEditField.Layout.Column = 8;
-            app.ReservedEditField.Value = [];
-
             % Create VPDTimehEditField
             app.VPDTimehEditField = uieditfield(app.GridLayout16, 'numeric');
             app.VPDTimehEditField.Layout.Row = 5;
@@ -6043,13 +7276,6 @@ end
             app.VPDTimehLabel.Layout.Column = 7;
             app.VPDTimehLabel.Text = 'VPD Time (h)';
 
-            % Create ReservedLabel
-            app.ReservedLabel = uilabel(app.GridLayout16);
-            app.ReservedLabel.FontColor = [0 0 0];
-            app.ReservedLabel.Layout.Row = 6;
-            app.ReservedLabel.Layout.Column = 7;
-            app.ReservedLabel.Text = 'Reserved';
-
             % Create SaveAsProjectButton
             app.SaveAsProjectButton = uibutton(app.GridLayout16, 'push');
             app.SaveAsProjectButton.ButtonPushedFcn = createCallbackFcn(app, @SaveAsProjectButtonPushed, true);
@@ -6084,6 +7310,23 @@ end
             app.OutputTextArea.Layout.Row = 8;
             app.OutputTextArea.Layout.Column = [1 12];
 
+            % Create SapFluxNet2SapFlowerButton
+            app.SapFluxNet2SapFlowerButton = uibutton(app.GridLayout16, 'push');
+            app.SapFluxNet2SapFlowerButton.ButtonPushedFcn = createCallbackFcn(app, @SapFluxNet2SapFlowerButtonPushed, true);
+            app.SapFluxNet2SapFlowerButton.BackgroundColor = [0.96 0.96 0.96];
+            app.SapFluxNet2SapFlowerButton.FontColor = [0 0 0];
+            app.SapFluxNet2SapFlowerButton.Layout.Row = 3;
+            app.SapFluxNet2SapFlowerButton.Layout.Column = [7 8];
+            app.SapFluxNet2SapFlowerButton.Text = 'SapFluxNet2SapFlower';
+
+            % Create SapFluxNetDataModeCheckBox
+            app.SapFluxNetDataModeCheckBox = uicheckbox(app.GridLayout16);
+            app.SapFluxNetDataModeCheckBox.ValueChangedFcn = createCallbackFcn(app, @SapFluxNetDataModeCheckBoxValueChanged, true);
+            app.SapFluxNetDataModeCheckBox.Text = 'SapFluxNetDataMode';
+            app.SapFluxNetDataModeCheckBox.FontColor = [0 0 0];
+            app.SapFluxNetDataModeCheckBox.Layout.Row = 6;
+            app.SapFluxNetDataModeCheckBox.Layout.Column = [7 8];
+
             % Create DataPreprocessingTab
             app.DataPreprocessingTab = uitab(app.TabGroup);
             app.DataPreprocessingTab.Title = 'Data Preprocessing';
@@ -6098,24 +7341,24 @@ end
             app.GridLayout13.RowSpacing = 3.5;
             app.GridLayout13.Padding = [1.5454531582919 3.5 1.5454531582919 3.5];
 
-            % Create UIAxes5
-            app.UIAxes5 = uiaxes(app.GridLayout13);
-            xlabel(app.UIAxes5, 'Time')
-            ylabel(app.UIAxes5, 'K detail')
-            zlabel(app.UIAxes5, 'Z')
-            app.UIAxes5.TickLength = [0.006 0.025];
-            app.UIAxes5.GridLineStyle = '-.';
-            app.UIAxes5.XColor = [0 0 0];
-            app.UIAxes5.XTick = [0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1];
-            app.UIAxes5.YColor = [0 0 0];
-            app.UIAxes5.YTick = [0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1];
-            app.UIAxes5.ZColor = [0 0 0];
-            app.UIAxes5.LineWidth = 0.25;
-            app.UIAxes5.Box = 'on';
-            app.UIAxes5.XGrid = 'on';
-            app.UIAxes5.YGrid = 'on';
-            app.UIAxes5.Layout.Row = 3;
-            app.UIAxes5.Layout.Column = [9 21];
+            % Create UIAxes3
+            app.UIAxes3 = uiaxes(app.GridLayout13);
+            xlabel(app.UIAxes3, 'Time')
+            ylabel(app.UIAxes3, 'dV Overview')
+            zlabel(app.UIAxes3, 'Z')
+            app.UIAxes3.TickLength = [0.006 0.025];
+            app.UIAxes3.GridLineWidth = 0.25;
+            app.UIAxes3.MinorGridLineWidth = 0.25;
+            app.UIAxes3.GridLineStyle = '-.';
+            app.UIAxes3.XColor = [0 0 0];
+            app.UIAxes3.YColor = [0 0 0];
+            app.UIAxes3.ZColor = [0 0 0];
+            app.UIAxes3.LineWidth = 0.25;
+            app.UIAxes3.Box = 'on';
+            app.UIAxes3.XGrid = 'on';
+            app.UIAxes3.YGrid = 'on';
+            app.UIAxes3.Layout.Row = 3;
+            app.UIAxes3.Layout.Column = [1 8];
 
             % Create UIAxes4
             app.UIAxes4 = uiaxes(app.GridLayout13);
@@ -6137,24 +7380,24 @@ end
             app.UIAxes4.Layout.Column = [1 21];
             app.UIAxes4.PickableParts = 'all';
 
-            % Create UIAxes3
-            app.UIAxes3 = uiaxes(app.GridLayout13);
-            xlabel(app.UIAxes3, 'Time')
-            ylabel(app.UIAxes3, 'dV Overview')
-            zlabel(app.UIAxes3, 'Z')
-            app.UIAxes3.TickLength = [0.006 0.025];
-            app.UIAxes3.GridLineWidth = 0.25;
-            app.UIAxes3.MinorGridLineWidth = 0.25;
-            app.UIAxes3.GridLineStyle = '-.';
-            app.UIAxes3.XColor = [0 0 0];
-            app.UIAxes3.YColor = [0 0 0];
-            app.UIAxes3.ZColor = [0 0 0];
-            app.UIAxes3.LineWidth = 0.25;
-            app.UIAxes3.Box = 'on';
-            app.UIAxes3.XGrid = 'on';
-            app.UIAxes3.YGrid = 'on';
-            app.UIAxes3.Layout.Row = 3;
-            app.UIAxes3.Layout.Column = [1 8];
+            % Create UIAxes5
+            app.UIAxes5 = uiaxes(app.GridLayout13);
+            xlabel(app.UIAxes5, 'Time')
+            ylabel(app.UIAxes5, 'K detail')
+            zlabel(app.UIAxes5, 'Z')
+            app.UIAxes5.TickLength = [0.006 0.025];
+            app.UIAxes5.GridLineStyle = '-.';
+            app.UIAxes5.XColor = [0 0 0];
+            app.UIAxes5.XTick = [0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1];
+            app.UIAxes5.YColor = [0 0 0];
+            app.UIAxes5.YTick = [0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1];
+            app.UIAxes5.ZColor = [0 0 0];
+            app.UIAxes5.LineWidth = 0.25;
+            app.UIAxes5.Box = 'on';
+            app.UIAxes5.XGrid = 'on';
+            app.UIAxes5.YGrid = 'on';
+            app.UIAxes5.Layout.Row = 3;
+            app.UIAxes5.Layout.Column = [9 21];
 
             % Create DeletedTdataButton
             app.DeletedTdataButton = uibutton(app.GridLayout13, 'push');
@@ -6363,8 +7606,17 @@ end
             app.RandomForestNode = uitreenode(app.Tree_3);
             app.RandomForestNode.Text = 'Random Forest';
 
-            % Assign Checked Nodes
-            app.Tree_3.CheckedNodes = [app.BiLSTMNode];
+            % Create SupportVectorRegressionNode
+            app.SupportVectorRegressionNode = uitreenode(app.Tree_3);
+            app.SupportVectorRegressionNode.Text = 'Support Vector Regression';
+
+            % Create GaussianProcessRegressionNode
+            app.GaussianProcessRegressionNode = uitreenode(app.Tree_3);
+            app.GaussianProcessRegressionNode.Text = 'Gaussian Process Regression';
+
+            % Create KernelRegressionNode
+            app.KernelRegressionNode = uitreenode(app.Tree_3);
+            app.KernelRegressionNode.Text = 'Kernel Regression';
 
             % Create EnvironmentalVariablesTree
             app.EnvironmentalVariablesTree = uitree(app.GridLayout14, 'checkbox');
@@ -6664,17 +7916,17 @@ end
             app.GapFillingTab.BackgroundColor = [0.902 0.902 0.902];
             app.GapFillingTab.Scrollable = 'on';
 
-            % Create GridLayout17
-            app.GridLayout17 = uigridlayout(app.GapFillingTab);
-            app.GridLayout17.ColumnWidth = {58, '1.22x', 132, '1x', 109};
-            app.GridLayout17.RowHeight = {22, 23, 21, 22, 22, 23, 19, '1.51x', 22, '6.76x', '1x'};
-            app.GridLayout17.ColumnSpacing = 0.166666666666666;
-            app.GridLayout17.RowSpacing = 4.58333333333333;
-            app.GridLayout17.Padding = [0.166666666666666 4.58333333333333 0.166666666666666 4.58333333333333];
-            app.GridLayout17.BackgroundColor = [0.94 0.94 0.94];
+            % Create GridLayout19
+            app.GridLayout19 = uigridlayout(app.GapFillingTab);
+            app.GridLayout19.ColumnWidth = {57.8, '1.22x', 131.8, '1x', 110.8};
+            app.GridLayout19.RowHeight = {22, 23, 21, 22, 22, 23, 19, 27, 32, 22, '6.76x', '1x'};
+            app.GridLayout19.ColumnSpacing = 0;
+            app.GridLayout19.RowSpacing = 5.38461538461539;
+            app.GridLayout19.Padding = [0 5.38461538461539 0 5.38461538461539];
+            app.GridLayout19.BackgroundColor = [0.94 0.94 0.94];
 
             % Create GapFillButton
-            app.GapFillButton = uibutton(app.GridLayout17, 'push');
+            app.GapFillButton = uibutton(app.GridLayout19, 'push');
             app.GapFillButton.ButtonPushedFcn = createCallbackFcn(app, @GapFillButtonPushed2, true);
             app.GapFillButton.BackgroundColor = [0.2196 0.6314 0.5059];
             app.GapFillButton.FontColor = [1 1 1];
@@ -6683,7 +7935,7 @@ end
             app.GapFillButton.Text = 'GapFill';
 
             % Create PredictedDataButton
-            app.PredictedDataButton = uibutton(app.GridLayout17, 'push');
+            app.PredictedDataButton = uibutton(app.GridLayout19, 'push');
             app.PredictedDataButton.ButtonPushedFcn = createCallbackFcn(app, @PredictedDataButtonPushed2, true);
             app.PredictedDataButton.BackgroundColor = [0.2314 0.7216 0.6627];
             app.PredictedDataButton.FontColor = [1 1 1];
@@ -6692,7 +7944,7 @@ end
             app.PredictedDataButton.Text = 'PredictedData';
 
             % Create RawDataButton
-            app.RawDataButton = uibutton(app.GridLayout17, 'push');
+            app.RawDataButton = uibutton(app.GridLayout19, 'push');
             app.RawDataButton.ButtonPushedFcn = createCallbackFcn(app, @RawDataButtonPushed2, true);
             app.RawDataButton.BackgroundColor = [0.302 0.7882 0.702];
             app.RawDataButton.FontColor = [1 1 1];
@@ -6701,24 +7953,24 @@ end
             app.RawDataButton.Text = 'RawData';
 
             % Create UITable5
-            app.UITable5 = uitable(app.GridLayout17);
+            app.UITable5 = uitable(app.GridLayout19);
             app.UITable5.ColumnName = {'Column 1'; 'Column 2'; 'Column 3'; 'Column 4'};
             app.UITable5.ColumnRearrangeable = 'on';
             app.UITable5.RowName = {};
-            app.UITable5.Layout.Row = 10;
+            app.UITable5.Layout.Row = 11;
             app.UITable5.Layout.Column = [1 2];
 
             % Create UITable5_2
-            app.UITable5_2 = uitable(app.GridLayout17);
+            app.UITable5_2 = uitable(app.GridLayout19);
             app.UITable5_2.ColumnName = {'Column 1'; 'Column 2'; 'Column 3'; 'Column 4'};
             app.UITable5_2.ColumnRearrangeable = 'on';
             app.UITable5_2.RowName = {};
-            app.UITable5_2.Layout.Row = 10;
+            app.UITable5_2.Layout.Row = 11;
             app.UITable5_2.Layout.Column = [3 4];
 
             % Create Tree
-            app.Tree = uitree(app.GridLayout17, 'checkbox');
-            app.Tree.Layout.Row = 10;
+            app.Tree = uitree(app.GridLayout19, 'checkbox');
+            app.Tree.Layout.Row = 11;
             app.Tree.Layout.Column = 5;
 
             % Create Node
@@ -6734,8 +7986,8 @@ end
             app.Node2.Text = 'Node2';
 
             % Create TabGroup2
-            app.TabGroup2 = uitabgroup(app.GridLayout17);
-            app.TabGroup2.Layout.Row = [1 8];
+            app.TabGroup2 = uitabgroup(app.GridLayout19);
+            app.TabGroup2.Layout.Row = [1 9];
             app.TabGroup2.Layout.Column = [1 4];
 
             % Create ViewRawDataTab
@@ -6749,7 +8001,7 @@ end
             ylabel(app.UIAxes6_4, 'Y')
             zlabel(app.UIAxes6_4, 'Z')
             app.UIAxes6_4.Box = 'on';
-            app.UIAxes6_4.Position = [1 9 1070 224];
+            app.UIAxes6_4.Position = [1 5 1070 224];
 
             % Create ViewPredictedDataTab
             app.ViewPredictedDataTab = uitab(app.TabGroup2);
@@ -6762,7 +8014,7 @@ end
             ylabel(app.UIAxes6_2, 'Y')
             zlabel(app.UIAxes6_2, 'Z')
             app.UIAxes6_2.Box = 'on';
-            app.UIAxes6_2.Position = [2 9 1069 225];
+            app.UIAxes6_2.Position = [2 5 1069 225];
 
             % Create ViewGapFilledDataTab
             app.ViewGapFilledDataTab = uitab(app.TabGroup2);
@@ -6775,7 +8027,7 @@ end
             ylabel(app.UIAxes6_3, 'Y')
             zlabel(app.UIAxes6_3, 'Z')
             app.UIAxes6_3.Box = 'on';
-            app.UIAxes6_3.Position = [2 8 1069 226];
+            app.UIAxes6_3.Position = [2 4 1069 226];
 
             % Create ViewKvaluesTab
             app.ViewKvaluesTab = uitab(app.TabGroup2);
@@ -6789,7 +8041,7 @@ end
             ylabel(app.UIAxes6_5, 'Y')
             zlabel(app.UIAxes6_5, 'Z')
             app.UIAxes6_5.Box = 'on';
-            app.UIAxes6_5.Position = [2 8 1069 226];
+            app.UIAxes6_5.Position = [2 4 1069 226];
 
             % Create ViewFvaluesTab
             app.ViewFvaluesTab = uitab(app.TabGroup2);
@@ -6803,7 +8055,7 @@ end
             ylabel(app.UIAxes6_6, 'Y')
             zlabel(app.UIAxes6_6, 'Z')
             app.UIAxes6_6.Box = 'on';
-            app.UIAxes6_6.Position = [2 8 1069 226];
+            app.UIAxes6_6.Position = [2 4 1069 226];
 
             % Create ViewDailyHourlySapFluxDensityTab
             app.ViewDailyHourlySapFluxDensityTab = uitab(app.TabGroup2);
@@ -6817,24 +8069,24 @@ end
             ylabel(app.UIAxes6_7, 'Y')
             zlabel(app.UIAxes6_7, 'Z')
             app.UIAxes6_7.Box = 'on';
-            app.UIAxes6_7.Position = [2 8 1069 226];
+            app.UIAxes6_7.Position = [2 4 1069 226];
 
             % Create RawDataLabel
-            app.RawDataLabel = uilabel(app.GridLayout17);
+            app.RawDataLabel = uilabel(app.GridLayout19);
             app.RawDataLabel.FontWeight = 'bold';
-            app.RawDataLabel.Layout.Row = 9;
+            app.RawDataLabel.Layout.Row = 10;
             app.RawDataLabel.Layout.Column = 1;
             app.RawDataLabel.Text = 'Raw Data';
 
             % Create PredictedDataLabel
-            app.PredictedDataLabel = uilabel(app.GridLayout17);
+            app.PredictedDataLabel = uilabel(app.GridLayout19);
             app.PredictedDataLabel.FontWeight = 'bold';
-            app.PredictedDataLabel.Layout.Row = 9;
+            app.PredictedDataLabel.Layout.Row = 10;
             app.PredictedDataLabel.Layout.Column = 3;
             app.PredictedDataLabel.Text = 'Predicted Data';
 
             % Create ExportKvaluesButton
-            app.ExportKvaluesButton = uibutton(app.GridLayout17, 'push');
+            app.ExportKvaluesButton = uibutton(app.GridLayout19, 'push');
             app.ExportKvaluesButton.ButtonPushedFcn = createCallbackFcn(app, @ExportKvaluesButtonPushed2, true);
             app.ExportKvaluesButton.BackgroundColor = [0.0627 0.4314 0.3882];
             app.ExportKvaluesButton.FontColor = [1 1 1];
@@ -6843,7 +8095,7 @@ end
             app.ExportKvaluesButton.Text = 'ExportKvalues';
 
             % Create ExportFvaluesButton
-            app.ExportFvaluesButton = uibutton(app.GridLayout17, 'push');
+            app.ExportFvaluesButton = uibutton(app.GridLayout19, 'push');
             app.ExportFvaluesButton.ButtonPushedFcn = createCallbackFcn(app, @ExportFvaluesButtonPushed2, true);
             app.ExportFvaluesButton.BackgroundColor = [0.0314 0.302 0.2667];
             app.ExportFvaluesButton.FontColor = [1 1 1];
@@ -6852,12 +8104,12 @@ end
             app.ExportFvaluesButton.Text = 'ExportFvalues';
 
             % Create TextArea_2
-            app.TextArea_2 = uitextarea(app.GridLayout17);
-            app.TextArea_2.Layout.Row = 11;
+            app.TextArea_2 = uitextarea(app.GridLayout19);
+            app.TextArea_2.Layout.Row = 12;
             app.TextArea_2.Layout.Column = [1 5];
 
             % Create ExportDailyWaterUse
-            app.ExportDailyWaterUse = uibutton(app.GridLayout17, 'push');
+            app.ExportDailyWaterUse = uibutton(app.GridLayout19, 'push');
             app.ExportDailyWaterUse.ButtonPushedFcn = createCallbackFcn(app, @ExportDailyWaterUseButtonPushed2, true);
             app.ExportDailyWaterUse.BackgroundColor = [0.0471 0.3882 0.4392];
             app.ExportDailyWaterUse.FontColor = [1 1 1];
@@ -6866,13 +8118,180 @@ end
             app.ExportDailyWaterUse.Text = 'ExportSapFlux';
 
             % Create ExportTypeDropDown
-            app.ExportTypeDropDown = uidropdown(app.GridLayout17);
+            app.ExportTypeDropDown = uidropdown(app.GridLayout19);
             app.ExportTypeDropDown.Items = {'Hourly', 'Daily'};
             app.ExportTypeDropDown.FontColor = [0 0 0];
             app.ExportTypeDropDown.BackgroundColor = [0.96 0.96 0.96];
             app.ExportTypeDropDown.Layout.Row = 7;
             app.ExportTypeDropDown.Layout.Column = 5;
             app.ExportTypeDropDown.Value = 'Hourly';
+
+            % Create ExportWaterUseButton
+            app.ExportWaterUseButton = uibutton(app.GridLayout19, 'push');
+            app.ExportWaterUseButton.ButtonPushedFcn = createCallbackFcn(app, @ExportWaterUseButtonPushed, true);
+            app.ExportWaterUseButton.BackgroundColor = [0.0431 0.702 0.702];
+            app.ExportWaterUseButton.FontColor = [1 1 1];
+            app.ExportWaterUseButton.Layout.Row = 9;
+            app.ExportWaterUseButton.Layout.Column = 5;
+            app.ExportWaterUseButton.Text = 'ExportWaterUse';
+
+            % Create SapwoodAnalysisTab
+            app.SapwoodAnalysisTab = uitab(app.TabGroup);
+            app.SapwoodAnalysisTab.Title = 'Sapwood Analysis';
+            app.SapwoodAnalysisTab.BackgroundColor = [0.94 0.94 0.94];
+
+            % Create GridLayout20
+            app.GridLayout20 = uigridlayout(app.SapwoodAnalysisTab);
+            app.GridLayout20.ColumnWidth = {'3.34x', 108, '1.09x', 104, '1x', 56, '1.66x', 100, '1.64x', 105, 105, 105, 101};
+            app.GridLayout20.RowHeight = {'1.03x', '1x', 22, 31};
+            app.GridLayout20.ColumnSpacing = 1.42857142857143;
+            app.GridLayout20.RowSpacing = 5;
+            app.GridLayout20.Padding = [1.42857142857143 5 1.42857142857143 5];
+            app.GridLayout20.BackgroundColor = [0.94 0.94 0.94];
+
+            % Create UIAxes10
+            app.UIAxes10 = uiaxes(app.GridLayout20);
+            title(app.UIAxes10, 'Title')
+            xlabel(app.UIAxes10, 'X')
+            ylabel(app.UIAxes10, 'Y')
+            zlabel(app.UIAxes10, 'Z')
+            app.UIAxes10.Layout.Row = 2;
+            app.UIAxes10.Layout.Column = [9 13];
+
+            % Create UIAxes9
+            app.UIAxes9 = uiaxes(app.GridLayout20);
+            title(app.UIAxes9, 'Title')
+            xlabel(app.UIAxes9, 'X')
+            ylabel(app.UIAxes9, 'Y')
+            zlabel(app.UIAxes9, 'Z')
+            app.UIAxes9.Layout.Row = 2;
+            app.UIAxes9.Layout.Column = [2 8];
+
+            % Create UIAxes8
+            app.UIAxes8 = uiaxes(app.GridLayout20);
+            title(app.UIAxes8, 'Title')
+            xlabel(app.UIAxes8, 'X')
+            ylabel(app.UIAxes8, 'Y')
+            zlabel(app.UIAxes8, 'Z')
+            app.UIAxes8.Layout.Row = 1;
+            app.UIAxes8.Layout.Column = [2 13];
+
+            % Create UITable6
+            app.UITable6 = uitable(app.GridLayout20);
+            app.UITable6.BackgroundColor = [1 1 1;0.94 0.94 0.94];
+            app.UITable6.ColumnName = {'Column 1'; 'Column 2'; 'Column 3'; 'Column 4'};
+            app.UITable6.RowName = {};
+            app.UITable6.ForegroundColor = [0 0 0];
+            app.UITable6.Layout.Row = [1 4];
+            app.UITable6.Layout.Column = 1;
+
+            % Create PasteButton
+            app.PasteButton = uibutton(app.GridLayout20, 'push');
+            app.PasteButton.BackgroundColor = [0.96 0.96 0.96];
+            app.PasteButton.FontColor = [0 0 0];
+            app.PasteButton.Layout.Row = 4;
+            app.PasteButton.Layout.Column = 12;
+            app.PasteButton.Text = 'Paste';
+
+            % Create ClearButton
+            app.ClearButton = uibutton(app.GridLayout20, 'push');
+            app.ClearButton.BackgroundColor = [0.9412 0.9412 0.9412];
+            app.ClearButton.FontColor = [0 0 0];
+            app.ClearButton.Layout.Row = 4;
+            app.ClearButton.Layout.Column = 11;
+            app.ClearButton.Text = 'Clear';
+
+            % Create CalculatePlotButton
+            app.CalculatePlotButton = uibutton(app.GridLayout20, 'push');
+            app.CalculatePlotButton.ButtonPushedFcn = createCallbackFcn(app, @CalculatePlotButtonPushed, true);
+            app.CalculatePlotButton.BackgroundColor = [0.2039 0.7608 0.6196];
+            app.CalculatePlotButton.FontColor = [0 0 0];
+            app.CalculatePlotButton.Layout.Row = 4;
+            app.CalculatePlotButton.Layout.Column = 10;
+            app.CalculatePlotButton.Text = 'Calculate&Plot';
+
+            % Create ExportSapwoodButton
+            app.ExportSapwoodButton = uibutton(app.GridLayout20, 'push');
+            app.ExportSapwoodButton.ButtonPushedFcn = createCallbackFcn(app, @ExportSapwoodButtonPushed, true);
+            app.ExportSapwoodButton.BackgroundColor = [0.0431 0.702 0.702];
+            app.ExportSapwoodButton.FontColor = [1 1 1];
+            app.ExportSapwoodButton.Layout.Row = 4;
+            app.ExportSapwoodButton.Layout.Column = 13;
+            app.ExportSapwoodButton.Text = 'ExportSapwood';
+
+            % Create ScaleSapwoodButton
+            app.ScaleSapwoodButton = uibutton(app.GridLayout20, 'push');
+            app.ScaleSapwoodButton.ButtonPushedFcn = createCallbackFcn(app, @ScaleSapwoodButtonPushed, true);
+            app.ScaleSapwoodButton.BackgroundColor = [0.7216 0.4275 0.0941];
+            app.ScaleSapwoodButton.FontColor = [1 1 1];
+            app.ScaleSapwoodButton.Layout.Row = 4;
+            app.ScaleSapwoodButton.Layout.Column = 8;
+            app.ScaleSapwoodButton.Text = 'ScaleSapwood';
+
+            % Create StartAnalysisButton
+            app.StartAnalysisButton = uibutton(app.GridLayout20, 'push');
+            app.StartAnalysisButton.ButtonPushedFcn = createCallbackFcn(app, @StartAnalysisButtonPushed, true);
+            app.StartAnalysisButton.BackgroundColor = [0.0431 0.3725 0.3804];
+            app.StartAnalysisButton.FontColor = [1 1 1];
+            app.StartAnalysisButton.Layout.Row = 3;
+            app.StartAnalysisButton.Layout.Column = 2;
+            app.StartAnalysisButton.Text = 'StartAnalysis';
+
+            % Create StartSapWoodAreaLabel
+            app.StartSapWoodAreaLabel = uilabel(app.GridLayout20);
+            app.StartSapWoodAreaLabel.HorizontalAlignment = 'right';
+            app.StartSapWoodAreaLabel.FontColor = [0.851 0.3255 0.098];
+            app.StartSapWoodAreaLabel.Layout.Row = 4;
+            app.StartSapWoodAreaLabel.Layout.Column = 2;
+            app.StartSapWoodAreaLabel.Text = 'StartSapWoodArea';
+
+            % Create StartSapWoodAreaEditField
+            app.StartSapWoodAreaEditField = uieditfield(app.GridLayout20, 'numeric');
+            app.StartSapWoodAreaEditField.FontColor = [0.851 0.3255 0.098];
+            app.StartSapWoodAreaEditField.Layout.Row = 4;
+            app.StartSapWoodAreaEditField.Layout.Column = 3;
+
+            % Create EndSapWoodAreaEditFieldLabel
+            app.EndSapWoodAreaEditFieldLabel = uilabel(app.GridLayout20);
+            app.EndSapWoodAreaEditFieldLabel.HorizontalAlignment = 'right';
+            app.EndSapWoodAreaEditFieldLabel.FontColor = [0.851 0.3255 0.098];
+            app.EndSapWoodAreaEditFieldLabel.Layout.Row = 4;
+            app.EndSapWoodAreaEditFieldLabel.Layout.Column = 4;
+            app.EndSapWoodAreaEditFieldLabel.Text = 'EndSapWoodArea';
+
+            % Create EndSapWoodAreaEditField
+            app.EndSapWoodAreaEditField = uieditfield(app.GridLayout20, 'numeric');
+            app.EndSapWoodAreaEditField.FontColor = [0.851 0.3255 0.098];
+            app.EndSapWoodAreaEditField.Layout.Row = 4;
+            app.EndSapWoodAreaEditField.Layout.Column = 5;
+
+            % Create BaseDateDatePickerLabel
+            app.BaseDateDatePickerLabel = uilabel(app.GridLayout20);
+            app.BaseDateDatePickerLabel.HorizontalAlignment = 'right';
+            app.BaseDateDatePickerLabel.FontColor = [0 0 0];
+            app.BaseDateDatePickerLabel.Layout.Row = 4;
+            app.BaseDateDatePickerLabel.Layout.Column = 6;
+            app.BaseDateDatePickerLabel.Text = 'BaseDate';
+
+            % Create BaseDateDatePicker
+            app.BaseDateDatePicker = uidatepicker(app.GridLayout20);
+            app.BaseDateDatePicker.FontColor = [0 0 0];
+            app.BaseDateDatePicker.Layout.Row = 4;
+            app.BaseDateDatePicker.Layout.Column = 7;
+
+            % Create TreeSensorNameEditFieldLabel
+            app.TreeSensorNameEditFieldLabel = uilabel(app.GridLayout20);
+            app.TreeSensorNameEditFieldLabel.HorizontalAlignment = 'right';
+            app.TreeSensorNameEditFieldLabel.FontColor = [0 0 0];
+            app.TreeSensorNameEditFieldLabel.Layout.Row = 3;
+            app.TreeSensorNameEditFieldLabel.Layout.Column = 4;
+            app.TreeSensorNameEditFieldLabel.Text = 'Tree/SensorName';
+
+            % Create TreeSensorNameEditField
+            app.TreeSensorNameEditField = uieditfield(app.GridLayout20, 'text');
+            app.TreeSensorNameEditField.FontColor = [0 0 0];
+            app.TreeSensorNameEditField.Layout.Row = 3;
+            app.TreeSensorNameEditField.Layout.Column = 5;
 
             % Create ContextMenu
             app.ContextMenu = uicontextmenu(app.SapFlowerUIFigure);
