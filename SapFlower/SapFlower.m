@@ -92,12 +92,12 @@ classdef SapFlower < matlab.apps.AppBase
         TextArea2                       matlab.ui.control.TextArea
         NextSensorButton                matlab.ui.control.Button
         PreviousSensorButton            matlab.ui.control.Button
-        FinishEditingButton             matlab.ui.control.Button
+        SaveDataAsButton                matlab.ui.control.Button
         UndoDeletionButton              matlab.ui.control.Button
         DeletedTdataButton              matlab.ui.control.Button
-        UIAxes3                         matlab.ui.control.UIAxes
-        UIAxes4                         matlab.ui.control.UIAxes
         UIAxes5                         matlab.ui.control.UIAxes
+        UIAxes4                         matlab.ui.control.UIAxes
+        UIAxes3                         matlab.ui.control.UIAxes
         ModelTrainingTab                matlab.ui.container.Tab
         GridLayout14                    matlab.ui.container.GridLayout
         ScaleDataCheckBox               matlab.ui.control.CheckBox
@@ -216,9 +216,9 @@ classdef SapFlower < matlab.apps.AppBase
         ClearButton                     matlab.ui.control.Button
         PasteButton                     matlab.ui.control.Button
         UITable6                        matlab.ui.control.Table
-        UIAxes10                        matlab.ui.control.UIAxes
-        UIAxes9                         matlab.ui.control.UIAxes
         UIAxes8                         matlab.ui.control.UIAxes
+        UIAxes9                         matlab.ui.control.UIAxes
+        UIAxes10                        matlab.ui.control.UIAxes
         ContextMenu                     matlab.ui.container.ContextMenu
         SmoothdataMenu                  matlab.ui.container.Menu
         WaveletTransformMenu            matlab.ui.container.Menu
@@ -321,6 +321,7 @@ classdef SapFlower < matlab.apps.AppBase
         TimestampsTrain
         exportedWeights
         resolutionField
+        
 
     end
 
@@ -621,46 +622,49 @@ methods (Access = public)
             if isempty(sensorData) || ~isvector(sensorData)
                 error('Invalid sensor data: data must be a non-empty vector.');
             end
-    
+        
             if windowSize <= 0 || ~isnumeric(windowSize)
                 error('Invalid window size: it must be a positive numeric value.');
             end
-    
+        
             if thresholdMultiplier <= 0 || ~isnumeric(thresholdMultiplier)
                 error('Invalid threshold multiplier: it must be a positive numeric value.');
             end
-    
+        
             if variationThresholdHigh <= 0 || variationThresholdLow <= 0
                 error('Invalid variation thresholds: both must be positive numeric values.');
             end
-    
+        
             n = length(sensorData);
             outlierMask = false(n, 1);
             highVariationMask = false(n, 1);
             lowVariationMask = false(n, 1);
-    
+        
             % Precompute the overall IQR for the dataset
             Q1 = quantile(sensorData, 0.25);
             Q3 = quantile(sensorData, 0.75);
             IQR = Q3 - Q1;
-    
+        
             % Create a rolling window mean and standard deviation
             windowMeans = movmean(sensorData, windowSize, 'omitnan');
             windowStds = movstd(sensorData, windowSize, 'omitnan');
-    
+        
             % Identify outliers based on window means
             outlierMask(windowMeans < Q1 - thresholdMultiplier * IQR | windowMeans > Q3 + thresholdMultiplier * IQR) = true;
-    
+            disp(sum(outlierMask));
             % Identify high variation windows
             highVariationMask(windowStds > variationThresholdHigh) = true;
-    
+        
             % Identify low variation windows
             lowVariationMask(windowStds < variationThresholdLow) = true;
-    
+            % Define numNeighbors (e.g., 6)
+            numNeighbors = 12;
+            [cleanedData, outlierMask] = app.removeOutliersUsingNearestPoints(sensorData, numNeighbors);
             % Mark all inconsistent data (outliers, high variation, low variation) as NaN
             cleanedData = sensorData;
             cleanedData(outlierMask | highVariationMask | lowVariationMask) = NaN;
         end
+
     
         % Function to remove short runs of consistent data points
         function cleanedData = removeShortRuns(sensorData, minRunLength)
@@ -750,31 +754,89 @@ methods (Access = public)
         hold on;
     
         % Plot the original data
-        plot(data.TIMESTAMP, sensorData, 'b.', 'DisplayName', 'Original Data');
+        % plot(data.TIMESTAMP, sensorData, 'b.', 'DisplayName', 'Original Data');
     
         % Plot different types of outliers
         if any(outlierMask)
-            plot(data.TIMESTAMP(outlierMask), sensorData(outlierMask), 'rx', 'DisplayName', 'Outlier Windows');
+            plot(data.TIMESTAMP(outlierMask), sensorData(outlierMask), 'rd', 'MarkerSize', 4, 'DisplayName', 'Outlier/inversed Windows');
         end
     
         if any(highVariationMask)
-            plot(data.TIMESTAMP(highVariationMask), sensorData(highVariationMask), 'mo', 'DisplayName', 'High Variation Windows');
+            plot(data.TIMESTAMP(highVariationMask), sensorData(highVariationMask), 'mo', 'MarkerSize', 4, 'DisplayName', 'High Variation Windows');
         end
     
         if any(lowVariationMask)
-            plot(data.TIMESTAMP(lowVariationMask), sensorData(lowVariationMask), 'gs', 'DisplayName', 'Low Variation Windows');
+            plot(data.TIMESTAMP(lowVariationMask), sensorData(lowVariationMask), 'gs', 'MarkerSize', 4, 'DisplayName', 'Low Variation Windows');
         end
     
         % Plot the cleaned data
         cleanedDataIdx = ~isnan(cleanedData);
-        plot(data.TIMESTAMP(cleanedDataIdx), cleanedData(cleanedDataIdx), 'k.', 'DisplayName', 'Cleaned Data');
+        plot(data.TIMESTAMP(cleanedDataIdx), cleanedData(cleanedDataIdx), 'k.', 'MarkerSize', 4, 'DisplayName', 'Cleaned Data');
     
         xlabel('Time');
         ylabel('Sapflow');
         title(sprintf('Outliers and Cleaned Data for Sensor %s', currentSensor));
         legend('show');
         hold off;
+
+        % Assign the cleaned data back to sensorData
+        sensorData = cleanedData;
+        
+        % Update only the current sensor column in the UITable
+        if ~isempty(cleanedData)
+            data{:, sensorIdx} = cleanedData;  % Update only the selected sensor column
+            app.UITable4.Data = data;          % Refresh UITable with the updated data
+            disp(['Cleaned data for sensor ', currentSensor, ' has been updated in UITable4.']);
+        else
+            disp(['No valid data to update for sensor ', currentSensor, '.']);
+        end
+        plotData(app);
+
     end
+
+    function [cleanedData, inverseMask] = removeOutliersUsingNearestPoints(app, sensorData, numNeighbors)
+        % Function to remove data points based on nearest neighbors
+        
+        % Input validation
+        if isempty(sensorData) || ~isvector(sensorData)
+            error('Invalid sensor data: data must be a non-empty vector.');
+        end
+    
+        if isempty(app.baselineValues) || length(app.baselineValues) ~= length(sensorData)
+            error('Invalid baseline values: must be a vector of the same length as sensorData.');
+        end
+    
+        if numNeighbors <= 0 || ~isnumeric(numNeighbors)
+            error('Invalid number of neighbors: it must be a positive numeric value.');
+        end
+    
+        n = length(sensorData);
+        inverseMask = false(n, 1);  % Initialize inverseMask
+        
+        % Loop through each data point
+        for i = 1:n
+            % Determine indices for the nearest neighbors
+            leftIdx = max(1, i - numNeighbors);
+            rightIdx = min(n, i + numNeighbors);
+            
+            % Extract the nearest points
+            nearestPoints = sensorData(leftIdx:rightIdx);
+            
+            % Compute the maximum of the nearest points
+            maxNearest = max(nearestPoints, [], 'omitnan');
+            
+            % Check if baseline value is less than 3/4 of the maximum
+            if app.baselineValues(i) < (3/4) * maxNearest
+                % If condition is met, mask the entire window (or day)
+                inverseMask(leftIdx:rightIdx) = true;  % Mask all points in the window
+            end
+        end
+        
+        % Mark all masked points as NaN
+        cleanedData = sensorData;
+        cleanedData(inverseMask) = NaN;
+    end
+
 end
 
 %% Load trained model and make predictions %%
@@ -1301,12 +1363,6 @@ methods (Access = public)
                     error('Mismatch between TIMESTAMP and validIdx lengths.');
                 end
                 
-                % disp('Filtered TIMESTAMP length:');
-                % disp(length(filteredTimestamps));
-                % disp('Validation TIMESTAMP length:');
-                % disp(length(app.TimestampsValidation));
-                % disp('Validation Y length:');
-                % disp(length(app.YValidation));
 
                 % Final validation check
                 if length(app.TimestampsValidation) ~= length(app.YValidation)
@@ -1418,25 +1474,61 @@ methods (Access = public)
         end
     end
 
-
-    function loadEnvironmentalVariablesTree(app)
-        try
-            % Get all column names from the UITable
-            columnNames = app.UITable4.ColumnName;
+function loadEnvironmentalVariablesTree(app)
+    try
+        % Get all column names from the UITable
+        columnNames = app.UITable4.ColumnName;
+    
+        % Identify potential environmental columns from the loaded data
+        % Exclude any columns that are known to be sapflow sensors
+        potentialEnvColumns = setdiff(columnNames, app.SapFlowCols);
         
-            % Identify potential environmental columns from the loaded data
-            % Exclude any columns that are known to be sapflow sensors
-            potentialEnvColumns = setdiff(columnNames, app.SapFlowCols);
+        % Check if "VPD" is already present in the envColumns
+        if ~ismember('VPD', columnNames)
             
-            % Check if "VPD" is already present in the envColumns
-            if ~ismember('VPD', columnNames)
-                % Prompt the user to select the temperature and humidity columns
-                temperatureCol = menu('Select the Temperature Column:', potentialEnvColumns{:});
-                humidityCol = menu('Select the Humidity Column:', potentialEnvColumns{:});
+            % Check if the necessary columns (AirTC_Avg and RH) exist
+            if ismember('AirTC_Avg', columnNames) && ismember('RH', columnNames)
+                % Automatically assign AirTC_Avg as temperature and RH as humidity
+                app.temperature = app.UITable4.Data.AirTC_Avg;
+                app.humidity = app.UITable4.Data.RH;
+                
+                % Calculate VPD (Vapor Pressure Deficit)
+                app.VPD = (1 - app.humidity / 100) .* 0.6108 .* exp((17.27 .* app.temperature) ./ (app.temperature + 237.3));
+                
+                % Add "VPD" to the table data and update column names
+                app.UITable4.Data.VPD = app.VPD;
+                columnNames{end+1} = 'VPD';  % Add VPD to column names
+                
+                % Also update app.EnvMetaCols if needed
+                app.EnvMetaCols{end+1} = 'VPD';
+                
+            else
+                % If AirTC_Avg or RH are not found, prompt the user to select
+                % Select the temperature column
+                screenSize = get(0, 'ScreenSize');  % Get screen size as a 1x4 array
+                tempFig = uifigure('Name', 'Select Temperature Column', 'Position', [(screenSize(3) - 300) / 2, (screenSize(4) - 200) / 2, 300, 200]);
+
+                tempLabel = uilabel(tempFig, 'Text', 'Select the Temperature Column:', 'Position', [50, 140, 200, 30]);
+                tempDropdown = uidropdown(tempFig, 'Items', potentialEnvColumns);
+                tempDropdown.Position = [50, 100, 200, 22];
+                tempConfirmButton = uibutton(tempFig, 'Text', 'Confirm', 'Position', [100, 40, 100, 30], 'ButtonPushedFcn', @(btn,event) uiresume(tempFig));
+                uiwait(tempFig);  % Wait for confirmation
+                temperatureCol = tempDropdown.Value;
+                close(tempFig);
+                
+                % Create humidity figure
+                humFig = uifigure('Name', 'Select Humidity Column', 'Position', [(screenSize(3) - 300) / 2, (screenSize(4) - 200) / 2, 300, 200]);
+                humLabel = uilabel(humFig, 'Text', 'Select the Humidity Column:', 'Position', [50, 140, 200, 30]);
+                humDropdown = uidropdown(humFig, 'Items', potentialEnvColumns);
+                humDropdown.Position = [50, 100, 200, 22];
+                humConfirmButton = uibutton(humFig, 'Text', 'Confirm', 'Position', [100, 40, 100, 30], 'ButtonPushedFcn', @(btn,event) uiresume(humFig));
+                uiwait(humFig);  % Wait for confirmation
+                humidityCol = humDropdown.Value;
+                close(humFig);
                 
                 % Extract the temperature and humidity data
-                app.temperature = app.UITable4.Data.(potentialEnvColumns{temperatureCol});
-                app.humidity = app.UITable4.Data.(potentialEnvColumns{humidityCol});
+                app.temperature = app.UITable4.Data.(temperatureCol);
+                app.humidity = app.UITable4.Data.(humidityCol);
                 
                 % Calculate VPD (Vapor Pressure Deficit)
                 app.VPD = (1 - app.humidity / 100) .* 0.6108 .* exp((17.27 .* app.temperature) ./ (app.temperature + 237.3));
@@ -1448,43 +1540,46 @@ methods (Access = public)
                 % Also update app.EnvMetaCols if needed
                 app.EnvMetaCols{end+1} = 'VPD';
             end
-        
-            % Clear the existing tree (if any)
-            delete(app.EnvironmentalVariablesTree.Children);
-        
-            % Add the top-level node for environmental variables
-            envNode = uitreenode(app.EnvironmentalVariablesTree, 'Text', 'Predicting Variable(s)', 'NodeData', 'Predicting Variables');
-        
-            % Initialize an array to store the environmental nodes
-            envColumns = app.EnvMetaCols;  % Assuming envColumns are stored in app.EnvMetaCols
-            envNodes = gobjects(length(envColumns), 1);
-        
-            % Add each environmental variable as a child node
-            for i = 1:length(envColumns)
-                envNodes(i) = uitreenode(envNode, 'Text', envColumns{i}, 'NodeData', envColumns{i});
-            end
-        
-            % Add the top-level node for response variables
-            responseNode = uitreenode(app.EnvironmentalVariablesTree, 'Text', 'Response Variable(s)', 'NodeData', 'Response Variables');
-        
-            % Add child nodes under "Response Variable(s)"
-            app.dTNode = uitreenode(responseNode, 'Text', 'dT', 'NodeData', 'dT');
-            app.KNode = uitreenode(responseNode, 'Text', 'K', 'NodeData', 'K');
-            app.FNode = uitreenode(responseNode, 'Text', 'F', 'NodeData', 'F');
-        
-            % Expand the tree to show all nodes
-            expand(app.EnvironmentalVariablesTree);
-        
-            % Set VPD and dT as checked by default
-            vpdNode = envNodes(strcmp(envColumns, 'VPD')); % Find the VPD node
-            app.EnvironmentalVariablesTree.CheckedNodes = [vpdNode, app.dTNode];
-            
-        catch ME
-            % Handle any unexpected errors
-            msgbox(sprintf('An error occurred while loading the environmental variables tree: %s', ME.message), 'Error', 'error');
-            rethrow(ME);
         end
+    
+        % Clear the existing tree (if any)
+        delete(app.EnvironmentalVariablesTree.Children);
+    
+        % Add the top-level node for environmental variables
+        envNode = uitreenode(app.EnvironmentalVariablesTree, 'Text', 'Predicting Variable(s)', 'NodeData', 'Predicting Variables');
+    
+        % Initialize an array to store the environmental nodes
+        envColumns = app.EnvMetaCols;  % Assuming envColumns are stored in app.EnvMetaCols
+        envNodes = gobjects(length(envColumns), 1);
+    
+        % Add each environmental variable as a child node
+        for i = 1:length(envColumns)
+            envNodes(i) = uitreenode(envNode, 'Text', envColumns{i}, 'NodeData', envColumns{i});
+        end
+    
+        % Add the top-level node for response variables
+        responseNode = uitreenode(app.EnvironmentalVariablesTree, 'Text', 'Response Variable(s)', 'NodeData', 'Response Variables');
+    
+        % Add child nodes under "Response Variable(s)"
+        app.dTNode = uitreenode(responseNode, 'Text', 'dT', 'NodeData', 'dT');
+        app.KNode = uitreenode(responseNode, 'Text', 'K', 'NodeData', 'K');
+        app.FNode = uitreenode(responseNode, 'Text', 'F', 'NodeData', 'F');
+    
+        % Expand the tree to show all nodes
+        expand(app.EnvironmentalVariablesTree);
+    
+        % Set VPD and dT as checked by default
+        vpdNode = envNodes(strcmp(envColumns, 'VPD')); % Find the VPD node
+        app.EnvironmentalVariablesTree.CheckedNodes = [vpdNode, app.dTNode];
+        
+    catch ME
+        % Handle any unexpected errors
+        msgbox(sprintf('An error occurred while loading the environmental variables tree: %s', ME.message), 'Error', 'error');
+        rethrow(ME);
     end
+end
+
+
 
     % Function to perform one-hot encoding of hour
     function hourOneHot = oneHotEncodeHour(~,hourColumn)
@@ -2870,7 +2965,7 @@ end
                 % Get K-values, normalized VPD, and other required data
                 k_values = app.sapflowProcessor.ka_line;
                 normalized_vpd = app.VPD ./ max(app.VPD);
-                dTmax_baseline = app.baselineValues; % Assuming this is where you store the dTmax baseline
+                dTmax_baseline = app.baselineValues ./ max(app.baselineValues); % Assuming this is where you store the dTmax baseline
                 stable_nighttime_dT = app.sapflow(app.sapflowProcessor.spbl); % Sapflow values at stable nighttime points
                 stable_dT_low_VPD = app.sapflow(app.sapflowProcessor.zvbl); % Sapflow values at stable dT & low VPD point
 
@@ -4314,9 +4409,9 @@ end
         % Menu selected function: AboutMenu
         function AboutMenuSelected(app, event)
             text = {
-                '    SapFlower 1.0'
+                '    SapFlower 1.0.2'
                 ''
-                '    SapFlower 1.0 data editing window was created based on Baseliner 4.0.'
+                '    SapFlower 1.0.2 data editing window was created based on Baseliner 4.0.'
                 ' '
                 '    SapFlower is an interactive and deep learning powered tool for processing'
                 '    sap flux data from thermal dissipation probes (TDP Granier 1985,1987).'
@@ -4325,7 +4420,7 @@ end
                 '    from raw TDP data.'
                 ''
                 '    SapFlower was created to automate the preprocessing, data gap filling,'
-                '    and analysis of sap flow data measured based on Heat Dissipation Probes.'
+                '    and analysis of sap flow data measured based on TDP.'
                 ''
                 '    Copyright (c) 2024 Jiaxin Wang'
                 '    Licensed under the MIT License'
@@ -4333,7 +4428,7 @@ end
             
             % Create the main dialog
             dialog = javaObjectEDT('javax.swing.JDialog');
-            dialog.setTitle('About SapFlower 1.0');
+            dialog.setTitle('About SapFlower 1.0.2');
             dialog.setModal(true);
             % Create a panel to hold the text area
             panel = javaObjectEDT('javax.swing.JPanel');
@@ -4572,6 +4667,7 @@ end
             
             % Mark the project as loaded
             app.projectLoaded = true;
+            plotData(app);
 
             app.OutputTextArea.Value = [app.OutputTextArea.Value; {['Project loaded from: ', app.ProjectFilePath]}];
             scroll(app.OutputTextArea, "bottom");
@@ -4768,54 +4864,60 @@ end
             undoLastSubstraction(app)
         end
 
-        % Button pushed function: FinishEditingButton
-        function FinishEditingButtonPushed2(app, event)
-            % Prompt the user to choose between saving and replacing the original file or saving as a new file
-            choice = questdlg('Do you want to save and replace the original data file or save as a new file?', ...
-                              'Confirm Save', ...
-                              'Replace Original', 'Save As New File', 'Cancel', 'Cancel');
-            
-            % Handle the user's response
-            switch choice
-                case 'Replace Original'
-                    % Call the function to save edited data and update the UI
-                    app.saveEditedDataAndUpdateUI();
-                    
-                case 'Save As New File'
-                    % Attempt to prompt the user to specify a new file name and location
-                    try
-                        [file, path] = uiputfile({'*.csv'; '*.xlsx'; '*.mat'}, 'Save As New File');
-                        if isequal(file, 0) || isequal(path, 0)
-                            % User canceled the save as new file operation
-                            msgbox('Save operation canceled.', 'Canceled');
-                        else
-                            % Update the DataFilePath property to the new file path
-                            app.DataFilePath = fullfile(path, file);
-                            
-                            % Save the data to the new file and update the UI
-                            app.saveEditedDataAndUpdateUI();
-                        end
-                    catch ME
-                        % If there's an error with uiputfile, log the error and provide a fallback
-                        disp(['Error opening uiputfile: ', ME.message]);
-                        % Fallback: Ask user to input the file name and path via dialog
-                        filePrompt = inputdlg({'Enter the file path and name (e.g., C:\Users\test.csv):'}, ...
-                                              'Manual File Path Input', [1 50]);
-                        if isempty(filePrompt)
-                            % User canceled the manual input operation
-                            msgbox('Save operation canceled.', 'Canceled');
-                        else
-                            % Use the provided file path from the input dialog
-                            app.DataFilePath = filePrompt{1};
-                            % Save the data to the specified file and update the UI
-                            app.saveEditedDataAndUpdateUI();
-                        end
-                    end
-                    
-                case 'Cancel'
-                    % User canceled the operation
-                    msgbox('Operation canceled.', 'Canceled');
+        % Button pushed function: SaveDataAsButton
+        function SaveDataAsButtonPushed2(app, event)
+
+    try
+        % Check if the data in the table is a valid table
+        if ~istable(app.UITable4.Data)
+            % Convert the data to a table if it's not already a table
+            dataArray = app.UITable4.Data;
+            if isempty(dataArray)
+                % Notify the user if the table is empty
+                uialert(app.SapFlowerUIFigure, ...
+                    'Table is empty. Cannot save.', ...
+                    'Save Error', ...
+                    'Icon', 'info');
+                return;
             end
+            % Assuming default column names as 'Column1', 'Column2', etc.
+            dataTable = array2table(dataArray, 'VariableNames', {'Column1', 'Column2', 'Column3'});
+        else
+            % Use the existing table directly
+            dataTable = app.UITable4.Data;
+        end
+        
+        % Prompt the user to select a file location and name to save as CSV
+        [fileName, filePath] = uiputfile('*.csv', 'Save Table as New CSV');
+        
+        % Check if the user canceled the operation
+        if isequal(fileName, 0) || isequal(filePath, 0)
+            % User canceled the save operation
+            msgbox('Save operation canceled.', 'Canceled');
+            return;
+        end
+        
+        % Construct the full file path
+        fullFileName = fullfile(filePath, fileName);
+        
+        % Write the table to a CSV file
+        writetable(dataTable, fullFileName);
+        
+        % Notify the user of a successful save
+        uialert(app.SapFlowerUIFigure, ...
+            ['Table successfully saved as: ', fullFileName], ...
+            'Save Successful', ...
+            'Icon', 'info');
+    catch saveError
+        % Handle any errors during the save process
+        uialert(app.SapFlowerUIFigure, ...
+            'An error occurred while saving the file.', ...
+            'Save Error', ...
+            'Icon', 'error');
+        disp(saveError.message);
+    end
+
+
         end
 
         % Button pushed function: SaveDataButton
@@ -4856,6 +4958,7 @@ end
     
                 % Replot the data with the new Y selection
                 app.plotData(false); % Maintain current limits
+                plotData(app);
             catch ME
                 % Handle errors and provide feedback
                 errorMessage = sprintf('Error in PreviousSensorButtonPushed: %s', ME.message);
@@ -4892,6 +4995,8 @@ end
     
                 % Replot the data with the new Y selection
                 app.plotData(false); % Maintain current limits
+                plotData(app);
+                
             catch ME
                 % Handle errors and provide feedback
                 errorMessage = sprintf('Error in NextSensorButtonPushed: %s', ME.message);
@@ -7366,24 +7471,24 @@ end
             app.GridLayout13.RowSpacing = 3.5;
             app.GridLayout13.Padding = [1.5454531582919 3.5 1.5454531582919 3.5];
 
-            % Create UIAxes5
-            app.UIAxes5 = uiaxes(app.GridLayout13);
-            xlabel(app.UIAxes5, 'Time')
-            ylabel(app.UIAxes5, 'K detail')
-            zlabel(app.UIAxes5, 'Z')
-            app.UIAxes5.TickLength = [0.006 0.025];
-            app.UIAxes5.GridLineStyle = '-.';
-            app.UIAxes5.XColor = [0 0 0];
-            app.UIAxes5.XTick = [0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1];
-            app.UIAxes5.YColor = [0 0 0];
-            app.UIAxes5.YTick = [0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1];
-            app.UIAxes5.ZColor = [0 0 0];
-            app.UIAxes5.LineWidth = 0.25;
-            app.UIAxes5.Box = 'on';
-            app.UIAxes5.XGrid = 'on';
-            app.UIAxes5.YGrid = 'on';
-            app.UIAxes5.Layout.Row = 3;
-            app.UIAxes5.Layout.Column = [9 21];
+            % Create UIAxes3
+            app.UIAxes3 = uiaxes(app.GridLayout13);
+            xlabel(app.UIAxes3, 'Time')
+            ylabel(app.UIAxes3, 'dV Overview')
+            zlabel(app.UIAxes3, 'Z')
+            app.UIAxes3.TickLength = [0.006 0.025];
+            app.UIAxes3.GridLineWidth = 0.25;
+            app.UIAxes3.MinorGridLineWidth = 0.25;
+            app.UIAxes3.GridLineStyle = '-.';
+            app.UIAxes3.XColor = [0 0 0];
+            app.UIAxes3.YColor = [0 0 0];
+            app.UIAxes3.ZColor = [0 0 0];
+            app.UIAxes3.LineWidth = 0.25;
+            app.UIAxes3.Box = 'on';
+            app.UIAxes3.XGrid = 'on';
+            app.UIAxes3.YGrid = 'on';
+            app.UIAxes3.Layout.Row = 3;
+            app.UIAxes3.Layout.Column = [1 8];
 
             % Create UIAxes4
             app.UIAxes4 = uiaxes(app.GridLayout13);
@@ -7405,24 +7510,24 @@ end
             app.UIAxes4.Layout.Column = [1 21];
             app.UIAxes4.PickableParts = 'all';
 
-            % Create UIAxes3
-            app.UIAxes3 = uiaxes(app.GridLayout13);
-            xlabel(app.UIAxes3, 'Time')
-            ylabel(app.UIAxes3, 'dV Overview')
-            zlabel(app.UIAxes3, 'Z')
-            app.UIAxes3.TickLength = [0.006 0.025];
-            app.UIAxes3.GridLineWidth = 0.25;
-            app.UIAxes3.MinorGridLineWidth = 0.25;
-            app.UIAxes3.GridLineStyle = '-.';
-            app.UIAxes3.XColor = [0 0 0];
-            app.UIAxes3.YColor = [0 0 0];
-            app.UIAxes3.ZColor = [0 0 0];
-            app.UIAxes3.LineWidth = 0.25;
-            app.UIAxes3.Box = 'on';
-            app.UIAxes3.XGrid = 'on';
-            app.UIAxes3.YGrid = 'on';
-            app.UIAxes3.Layout.Row = 3;
-            app.UIAxes3.Layout.Column = [1 8];
+            % Create UIAxes5
+            app.UIAxes5 = uiaxes(app.GridLayout13);
+            xlabel(app.UIAxes5, 'Time')
+            ylabel(app.UIAxes5, 'K detail')
+            zlabel(app.UIAxes5, 'Z')
+            app.UIAxes5.TickLength = [0.006 0.025];
+            app.UIAxes5.GridLineStyle = '-.';
+            app.UIAxes5.XColor = [0 0 0];
+            app.UIAxes5.XTick = [0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1];
+            app.UIAxes5.YColor = [0 0 0];
+            app.UIAxes5.YTick = [0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1];
+            app.UIAxes5.ZColor = [0 0 0];
+            app.UIAxes5.LineWidth = 0.25;
+            app.UIAxes5.Box = 'on';
+            app.UIAxes5.XGrid = 'on';
+            app.UIAxes5.YGrid = 'on';
+            app.UIAxes5.Layout.Row = 3;
+            app.UIAxes5.Layout.Column = [9 21];
 
             % Create DeletedTdataButton
             app.DeletedTdataButton = uibutton(app.GridLayout13, 'push');
@@ -7441,14 +7546,14 @@ end
             app.UndoDeletionButton.Layout.Column = [2 3];
             app.UndoDeletionButton.Text = 'Undo Deletion ';
 
-            % Create FinishEditingButton
-            app.FinishEditingButton = uibutton(app.GridLayout13, 'push');
-            app.FinishEditingButton.ButtonPushedFcn = createCallbackFcn(app, @FinishEditingButtonPushed2, true);
-            app.FinishEditingButton.BackgroundColor = [0.8902 0.5922 0.1412];
-            app.FinishEditingButton.FontColor = [0.9412 0.9412 0.9412];
-            app.FinishEditingButton.Layout.Row = 1;
-            app.FinishEditingButton.Layout.Column = [2 3];
-            app.FinishEditingButton.Text = 'Finish Editing';
+            % Create SaveDataAsButton
+            app.SaveDataAsButton = uibutton(app.GridLayout13, 'push');
+            app.SaveDataAsButton.ButtonPushedFcn = createCallbackFcn(app, @SaveDataAsButtonPushed2, true);
+            app.SaveDataAsButton.BackgroundColor = [0.8902 0.5922 0.1412];
+            app.SaveDataAsButton.FontColor = [0.9412 0.9412 0.9412];
+            app.SaveDataAsButton.Layout.Row = 1;
+            app.SaveDataAsButton.Layout.Column = [2 3];
+            app.SaveDataAsButton.Text = 'SaveDataAs';
 
             % Create PreviousSensorButton
             app.PreviousSensorButton = uibutton(app.GridLayout13, 'push');
@@ -8174,14 +8279,14 @@ end
             app.GridLayout20.Padding = [1.42857142857143 5 1.42857142857143 5];
             app.GridLayout20.BackgroundColor = [0.94 0.94 0.94];
 
-            % Create UIAxes8
-            app.UIAxes8 = uiaxes(app.GridLayout20);
-            title(app.UIAxes8, 'Title')
-            xlabel(app.UIAxes8, 'X')
-            ylabel(app.UIAxes8, 'Y')
-            zlabel(app.UIAxes8, 'Z')
-            app.UIAxes8.Layout.Row = 1;
-            app.UIAxes8.Layout.Column = [2 13];
+            % Create UIAxes10
+            app.UIAxes10 = uiaxes(app.GridLayout20);
+            title(app.UIAxes10, 'Title')
+            xlabel(app.UIAxes10, 'X')
+            ylabel(app.UIAxes10, 'Y')
+            zlabel(app.UIAxes10, 'Z')
+            app.UIAxes10.Layout.Row = 2;
+            app.UIAxes10.Layout.Column = [9 13];
 
             % Create UIAxes9
             app.UIAxes9 = uiaxes(app.GridLayout20);
@@ -8192,14 +8297,14 @@ end
             app.UIAxes9.Layout.Row = 2;
             app.UIAxes9.Layout.Column = [2 8];
 
-            % Create UIAxes10
-            app.UIAxes10 = uiaxes(app.GridLayout20);
-            title(app.UIAxes10, 'Title')
-            xlabel(app.UIAxes10, 'X')
-            ylabel(app.UIAxes10, 'Y')
-            zlabel(app.UIAxes10, 'Z')
-            app.UIAxes10.Layout.Row = 2;
-            app.UIAxes10.Layout.Column = [9 13];
+            % Create UIAxes8
+            app.UIAxes8 = uiaxes(app.GridLayout20);
+            title(app.UIAxes8, 'Title')
+            xlabel(app.UIAxes8, 'X')
+            ylabel(app.UIAxes8, 'Y')
+            zlabel(app.UIAxes8, 'Z')
+            app.UIAxes8.Layout.Row = 1;
+            app.UIAxes8.Layout.Column = [2 13];
 
             % Create UITable6
             app.UITable6 = uitable(app.GridLayout20);
