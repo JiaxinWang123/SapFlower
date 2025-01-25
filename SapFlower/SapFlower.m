@@ -100,6 +100,7 @@ classdef SapFlower < matlab.apps.AppBase
         UIAxes3                         matlab.ui.control.UIAxes
         ModelTrainingTab                matlab.ui.container.Tab
         GridLayout14                    matlab.ui.container.GridLayout
+        ShowplotsaftertrainingCheckBox  matlab.ui.control.CheckBox
         ScaleDataCheckBox               matlab.ui.control.CheckBox
         SplitForValidationEditField     matlab.ui.control.NumericEditField
         SplitForValidationLabel         matlab.ui.control.Label
@@ -190,6 +191,8 @@ classdef SapFlower < matlab.apps.AppBase
         UIAxes6_6                       matlab.ui.control.UIAxes
         ViewDailyHourlySapFluxDensityTab  matlab.ui.container.Tab
         UIAxes6_7                       matlab.ui.control.UIAxes
+        ViewWaterUseTab                 matlab.ui.container.Tab
+        UIAxes6_8                       matlab.ui.control.UIAxes
         Tree                            matlab.ui.container.CheckBoxTree
         Node                            matlab.ui.container.TreeNode
         Node_2                          matlab.ui.container.TreeNode
@@ -321,6 +324,7 @@ classdef SapFlower < matlab.apps.AppBase
         TimestampsTrain
         exportedWeights
         resolutionField
+        lineHandle
         
 
     end
@@ -616,6 +620,11 @@ end
 methods (Access = public)
 
     function plotExampleCleanedSapflow(app)
+        % Skip cleaning and saving if SapFluxNetDataModeCheckBox is checked
+        if app.SapFluxNetDataModeCheckBox.Value
+            disp('SapFluxNet Data Mode is active. Skipping data cleaning and saving.');
+            return;
+        end
         % Function to detect and remove outlier windows and windows with high or low variation
         function [cleanedData, outlierMask, highVariationMask, lowVariationMask] = removeOutlierWindowsAndInconsistencies(sensorData, windowSize, thresholdMultiplier, variationThresholdHigh, variationThresholdLow)
             % Check if the input data is valid
@@ -702,8 +711,16 @@ methods (Access = public)
             return;
         end
     
-        % Identify sapflow columns (those starting with 'B1' or 'B2')
-        sensorColumns = find(startsWith(data.Properties.VariableNames, {'B1', 'B2'}), 1);
+        % Dynamically identify sensor columns based on numeric or relevant content
+        % Here, you check for columns that are numeric and likely represent sensor data
+        sensorColumns = find(varfun(@isnumeric, data, 'OutputFormat', 'uniform'));
+        
+        % Ensure sensor columns are valid
+        if isempty(sensorColumns)
+            disp('Error: No numeric sensor data columns were found in the data.');
+            return;
+        end
+
     
         % Check if any sapflow columns were found
         if isempty(sensorColumns)
@@ -1200,7 +1217,7 @@ methods (Access = public)
                 variationThresholdLow = app.LowVariationThresholdEditField.Value; 
                 minRunLength = app.DeleteDataPointsLessThanEditField.Value;
     
-                % Pre-filter sapflow data: sapflow > 1.5 is excluded, and negative sapflow is set to 0
+                % Pre-filter sapflow data, and negative sapflow is set to 0
                 for sensorIndex = 1:numSensors
                     if cleanedDataAvailable(sensorIndex)
                         continue; % Skip cleaning for already cleaned sensors
@@ -1209,23 +1226,32 @@ methods (Access = public)
                     sensorName = selectedSensorNames{sensorIndex};
                     sensorColumn = sensorColumns(sensorIndex);
     
-                    % Apply filtering and cleaning
+                    % Extract the sensor data
                     sensorData = data{:, sensorColumn};
-                    cleanedData = filterAndCleanData(app, sensorData, windowSize, thresholdMultiplier, variationThresholdHigh, variationThresholdLow, minRunLength);
-    
+                    
+                    % Check if the SapFluxNetDataModeCheckBox is true
+                    if app.SapFluxNetDataModeCheckBox.Value
+                        % If true, don't filter; use original sensorData
+                        cleanedData = sensorData;
+                    else
+                        % Otherwise, clean and filter the data
+                        cleanedData = filterAndCleanData(app, sensorData, windowSize, thresholdMultiplier, variationThresholdHigh, variationThresholdLow, minRunLength);
+                    end
+                    
                     % Get the TIMESTAMP, VPD, and PAR columns
                     timestampData = data.TIMESTAMP;
                     vpdData = data.VPD;
                     parData = data.PAR_Den_Avg;  % Replace 'PAR' with the actual variable name if different
-    
-                    % Create a table with the cleaned data, TIMESTAMP, VPD, and PAR
+                    
+                    % Create a table with the data, TIMESTAMP, VPD, and PAR
                     combinedTable = table(timestampData, cleanedData, vpdData, parData, ...
                         'VariableNames', {'TIMESTAMP', sensorName, 'VPD', 'PAR_Den_Avg'});
-    
-                    % Save the combined table for the cleaned data
+                    
+                    % Save the combined table
                     outputPath = app.Output.Value;
                     cleanedFilename = fullfile(outputPath, 'CleanedData', sprintf('Cleaned_%s.csv', sensorName));
                     writetable(combinedTable, cleanedFilename);
+
     
                     app.TextArea.Value = [app.TextArea.Value; {sprintf('Cleaned data for sensor %s saved to %s', sensorName, cleanedFilename)}];
                     drawnow; % Ensure the TextArea updates immediately
@@ -1336,7 +1362,7 @@ methods (Access = public)
                 
                 cv = cvpartition(length(Y), 'HoldOut', validationSplit);
                 
-                % Training set
+                % Training set indices
                 trainIdx = find(cv.training); % Explicit indices
                 app.XTrain = X(trainIdx, :);
                 app.YTrain = Y(trainIdx);
@@ -1344,10 +1370,48 @@ methods (Access = public)
                 
                 % Validation set indices
                 validationIdx = find(cv.test); % Indices for validation set within filtered data
-                % Filter X and Y for validation
                 app.XValidation = X(validationIdx, :);
                 app.YValidation = Y(validationIdx);
+                app.TimestampsValidation = data.TIMESTAMP(validIdx(validationIdx)); % Ensure TIMESTAMP aligns with validationIdx
+               
+                % Ensure the entire dataset is split using the provided training/validation split
+                % Create labels for the entire dataset based on the split (Training/Validation)
+                combinedLabels = repmat("Validation", length(data.TIMESTAMP), 1); % Default to Validation
+                combinedLabels(cv.training) = "Training"; % Set Training for training indices
                 
+                % Combine the entire dataset
+                combinedTimestamps = data.TIMESTAMP; % Entire Timestamps dataset
+                
+                % Ensure Y is the correct length, assign NaN for missing values
+                combinedY = NaN(length(data.TIMESTAMP), 1); % Initialize with NaNs
+                combinedY(1:length(Y)) = Y; % Assign available Y values to the corresponding positions
+
+                % Updated code to check the checkbox state before plotting
+                if app.ShowplotsaftertrainingCheckBox.Value
+                    % Proceed with plotting if the checkbox is checked
+                    app.TextArea.Value = [app.TextArea.Value; {'Plotting results after training...'}];
+                    scroll(app.TextArea, 'bottom');
+                    drawnow;
+                    % Plot the data with different colors for Training and Validation using labels
+                    figure;
+                    gscatter(combinedTimestamps, combinedY, combinedLabels, 'br', 'xo', 3); % Set marker size to 3
+                    xlabel('Timestamp');
+                    ylabel('Sap flow Value');
+                    title('Training and Validation Data');
+                    legend('Training Data', 'Validation Data');
+                    grid on;
+                    
+                    % Set XLim to match the range of valid Y values (timestamps where Y is not NaN)
+                    validIdx = ~isnan(combinedY); % Find indices where Y is not NaN
+                    xlim([min(combinedTimestamps(validIdx)), max(combinedTimestamps(validIdx))]);
+                
+                else
+                    % Skip plotting if the checkbox is not checked
+                    app.TextArea.Value = [app.TextArea.Value; {'Skipping plots as "Show plots after training" is unchecked.'}];
+                    scroll(app.TextArea, 'bottom');
+                    drawnow;
+                end
+
                 % Filter TIMESTAMP for validation
                 if length(data.TIMESTAMP) == length(validIdx)
                     % Filter TIMESTAMP using validIdx
@@ -1392,10 +1456,22 @@ methods (Access = public)
                 scroll(app.TextArea, 'bottom');
                 drawnow;
             end
-    
-            % Select the effective period and plot the segmented data
-            plotSegmentedData(app, data, sensorColumns);
-    
+
+            % Updated code to check the checkbox state before plotting
+            if app.ShowplotsaftertrainingCheckBox.Value
+                % Proceed with plotting if the checkbox is checked
+                app.TextArea.Value = [app.TextArea.Value; {'Plotting results after training...'}];
+                scroll(app.TextArea, 'bottom');
+                drawnow;
+                % Select the effective period and plot the segmented data
+                plotSegmentedData(app, data, sensorColumns);
+            else
+                % Skip plotting if the checkbox is not checked
+                app.TextArea.Value = [app.TextArea.Value; {'Skipping plots as "Show plots after training" is unchecked.'}];
+                scroll(app.TextArea, 'bottom');
+                drawnow;
+            end
+
             % Store the current state of UITable4.Data as PreviousTableData for future comparisons
             app.PreviousTableData = app.UITable4.Data;
     
@@ -1474,110 +1550,110 @@ methods (Access = public)
         end
     end
 
-function loadEnvironmentalVariablesTree(app)
-    try
-        % Get all column names from the UITable
-        columnNames = app.UITable4.ColumnName;
-    
-        % Identify potential environmental columns from the loaded data
-        % Exclude any columns that are known to be sapflow sensors
-        potentialEnvColumns = setdiff(columnNames, app.SapFlowCols);
+    function loadEnvironmentalVariablesTree(app)
+        try
+            % Get all column names from the UITable
+            columnNames = app.UITable4.ColumnName;
         
-        % Check if "VPD" is already present in the envColumns
-        if ~ismember('VPD', columnNames)
+            % Identify potential environmental columns from the loaded data
+            % Exclude any columns that are known to be sapflow sensors
+            potentialEnvColumns = setdiff(columnNames, app.SapFlowCols);
             
-            % Check if the necessary columns (AirTC_Avg and RH) exist
-            if ismember('AirTC_Avg', columnNames) && ismember('RH', columnNames)
-                % Automatically assign AirTC_Avg as temperature and RH as humidity
-                app.temperature = app.UITable4.Data.AirTC_Avg;
-                app.humidity = app.UITable4.Data.RH;
+            % Check if "VPD" is already present in the envColumns
+            if ~ismember('VPD', columnNames)
                 
-                % Calculate VPD (Vapor Pressure Deficit)
-                app.VPD = (1 - app.humidity / 100) .* 0.6108 .* exp((17.27 .* app.temperature) ./ (app.temperature + 237.3));
-                
-                % Add "VPD" to the table data and update column names
-                app.UITable4.Data.VPD = app.VPD;
-                columnNames{end+1} = 'VPD';  % Add VPD to column names
-                
-                % Also update app.EnvMetaCols if needed
-                app.EnvMetaCols{end+1} = 'VPD';
-                
-            else
-                % If AirTC_Avg or RH are not found, prompt the user to select
-                % Select the temperature column
-                screenSize = get(0, 'ScreenSize');  % Get screen size as a 1x4 array
-                tempFig = uifigure('Name', 'Select Temperature Column', 'Position', [(screenSize(3) - 300) / 2, (screenSize(4) - 200) / 2, 300, 200]);
-
-                tempLabel = uilabel(tempFig, 'Text', 'Select the Temperature Column:', 'Position', [50, 140, 200, 30]);
-                tempDropdown = uidropdown(tempFig, 'Items', potentialEnvColumns);
-                tempDropdown.Position = [50, 100, 200, 22];
-                tempConfirmButton = uibutton(tempFig, 'Text', 'Confirm', 'Position', [100, 40, 100, 30], 'ButtonPushedFcn', @(btn,event) uiresume(tempFig));
-                uiwait(tempFig);  % Wait for confirmation
-                temperatureCol = tempDropdown.Value;
-                close(tempFig);
-                
-                % Create humidity figure
-                humFig = uifigure('Name', 'Select Humidity Column', 'Position', [(screenSize(3) - 300) / 2, (screenSize(4) - 200) / 2, 300, 200]);
-                humLabel = uilabel(humFig, 'Text', 'Select the Humidity Column:', 'Position', [50, 140, 200, 30]);
-                humDropdown = uidropdown(humFig, 'Items', potentialEnvColumns);
-                humDropdown.Position = [50, 100, 200, 22];
-                humConfirmButton = uibutton(humFig, 'Text', 'Confirm', 'Position', [100, 40, 100, 30], 'ButtonPushedFcn', @(btn,event) uiresume(humFig));
-                uiwait(humFig);  % Wait for confirmation
-                humidityCol = humDropdown.Value;
-                close(humFig);
-                
-                % Extract the temperature and humidity data
-                app.temperature = app.UITable4.Data.(temperatureCol);
-                app.humidity = app.UITable4.Data.(humidityCol);
-                
-                % Calculate VPD (Vapor Pressure Deficit)
-                app.VPD = (1 - app.humidity / 100) .* 0.6108 .* exp((17.27 .* app.temperature) ./ (app.temperature + 237.3));
-                
-                % Add "VPD" to the table data and update column names
-                app.UITable4.Data.VPD = app.VPD;
-                columnNames{end+1} = 'VPD';  % Add VPD to column names
-                
-                % Also update app.EnvMetaCols if needed
-                app.EnvMetaCols{end+1} = 'VPD';
+                % Check if the necessary columns (AirTC_Avg and RH) exist
+                if ismember('AirTC_Avg', columnNames) && ismember('RH', columnNames)
+                    % Automatically assign AirTC_Avg as temperature and RH as humidity
+                    app.temperature = app.UITable4.Data.AirTC_Avg;
+                    app.humidity = app.UITable4.Data.RH;
+                    
+                    % Calculate VPD (Vapor Pressure Deficit)
+                    app.VPD = (1 - app.humidity / 100) .* 0.6108 .* exp((17.27 .* app.temperature) ./ (app.temperature + 237.3));
+                    
+                    % Add "VPD" to the table data and update column names
+                    app.UITable4.Data.VPD = app.VPD;
+                    columnNames{end+1} = 'VPD';  % Add VPD to column names
+                    
+                    % Also update app.EnvMetaCols if needed
+                    app.EnvMetaCols{end+1} = 'VPD';
+                    
+                else
+                    % If AirTC_Avg or RH are not found, prompt the user to select
+                    % Select the temperature column
+                    screenSize = get(0, 'ScreenSize');  % Get screen size as a 1x4 array
+                    tempFig = uifigure('Name', 'Select Temperature Column', 'Position', [(screenSize(3) - 300) / 2, (screenSize(4) - 200) / 2, 300, 200]);
+    
+                    tempLabel = uilabel(tempFig, 'Text', 'Select the Temperature Column:', 'Position', [50, 140, 200, 30]);
+                    tempDropdown = uidropdown(tempFig, 'Items', potentialEnvColumns);
+                    tempDropdown.Position = [50, 100, 200, 22];
+                    tempConfirmButton = uibutton(tempFig, 'Text', 'Confirm', 'Position', [100, 40, 100, 30], 'ButtonPushedFcn', @(btn,event) uiresume(tempFig));
+                    uiwait(tempFig);  % Wait for confirmation
+                    temperatureCol = tempDropdown.Value;
+                    close(tempFig);
+                    
+                    % Create humidity figure
+                    humFig = uifigure('Name', 'Select Humidity Column', 'Position', [(screenSize(3) - 300) / 2, (screenSize(4) - 200) / 2, 300, 200]);
+                    humLabel = uilabel(humFig, 'Text', 'Select the Humidity Column:', 'Position', [50, 140, 200, 30]);
+                    humDropdown = uidropdown(humFig, 'Items', potentialEnvColumns);
+                    humDropdown.Position = [50, 100, 200, 22];
+                    humConfirmButton = uibutton(humFig, 'Text', 'Confirm', 'Position', [100, 40, 100, 30], 'ButtonPushedFcn', @(btn,event) uiresume(humFig));
+                    uiwait(humFig);  % Wait for confirmation
+                    humidityCol = humDropdown.Value;
+                    close(humFig);
+                    
+                    % Extract the temperature and humidity data
+                    app.temperature = app.UITable4.Data.(temperatureCol);
+                    app.humidity = app.UITable4.Data.(humidityCol);
+                    
+                    % Calculate VPD (Vapor Pressure Deficit)
+                    app.VPD = (1 - app.humidity / 100) .* 0.6108 .* exp((17.27 .* app.temperature) ./ (app.temperature + 237.3));
+                    
+                    % Add "VPD" to the table data and update column names
+                    app.UITable4.Data.VPD = app.VPD;
+                    columnNames{end+1} = 'VPD';  % Add VPD to column names
+                    
+                    % Also update app.EnvMetaCols if needed
+                    app.EnvMetaCols{end+1} = 'VPD';
+                end
             end
-        end
-    
-        % Clear the existing tree (if any)
-        delete(app.EnvironmentalVariablesTree.Children);
-    
-        % Add the top-level node for environmental variables
-        envNode = uitreenode(app.EnvironmentalVariablesTree, 'Text', 'Predicting Variable(s)', 'NodeData', 'Predicting Variables');
-    
-        % Initialize an array to store the environmental nodes
-        envColumns = app.EnvMetaCols;  % Assuming envColumns are stored in app.EnvMetaCols
-        envNodes = gobjects(length(envColumns), 1);
-    
-        % Add each environmental variable as a child node
-        for i = 1:length(envColumns)
-            envNodes(i) = uitreenode(envNode, 'Text', envColumns{i}, 'NodeData', envColumns{i});
-        end
-    
-        % Add the top-level node for response variables
-        responseNode = uitreenode(app.EnvironmentalVariablesTree, 'Text', 'Response Variable(s)', 'NodeData', 'Response Variables');
-    
-        % Add child nodes under "Response Variable(s)"
-        app.dTNode = uitreenode(responseNode, 'Text', 'dT', 'NodeData', 'dT');
-        app.KNode = uitreenode(responseNode, 'Text', 'K', 'NodeData', 'K');
-        app.FNode = uitreenode(responseNode, 'Text', 'F', 'NodeData', 'F');
-    
-        % Expand the tree to show all nodes
-        expand(app.EnvironmentalVariablesTree);
-    
-        % Set VPD and dT as checked by default
-        vpdNode = envNodes(strcmp(envColumns, 'VPD')); % Find the VPD node
-        app.EnvironmentalVariablesTree.CheckedNodes = [vpdNode, app.dTNode];
         
-    catch ME
-        % Handle any unexpected errors
-        msgbox(sprintf('An error occurred while loading the environmental variables tree: %s', ME.message), 'Error', 'error');
-        rethrow(ME);
+            % Clear the existing tree (if any)
+            delete(app.EnvironmentalVariablesTree.Children);
+        
+            % Add the top-level node for environmental variables
+            envNode = uitreenode(app.EnvironmentalVariablesTree, 'Text', 'Predicting Variable(s)', 'NodeData', 'Predicting Variables');
+        
+            % Initialize an array to store the environmental nodes
+            envColumns = app.EnvMetaCols;  % Assuming envColumns are stored in app.EnvMetaCols
+            envNodes = gobjects(length(envColumns), 1);
+        
+            % Add each environmental variable as a child node
+            for i = 1:length(envColumns)
+                envNodes(i) = uitreenode(envNode, 'Text', envColumns{i}, 'NodeData', envColumns{i});
+            end
+        
+            % Add the top-level node for response variables
+            responseNode = uitreenode(app.EnvironmentalVariablesTree, 'Text', 'Response Variable(s)', 'NodeData', 'Response Variables');
+        
+            % Add child nodes under "Response Variable(s)"
+            app.dTNode = uitreenode(responseNode, 'Text', 'dT', 'NodeData', 'dT');
+            app.KNode = uitreenode(responseNode, 'Text', 'K', 'NodeData', 'K');
+            app.FNode = uitreenode(responseNode, 'Text', 'F', 'NodeData', 'F');
+        
+            % Expand the tree to show all nodes
+            expand(app.EnvironmentalVariablesTree);
+        
+            % Set VPD and dT as checked by default
+            vpdNode = envNodes(strcmp(envColumns, 'VPD')); % Find the VPD node
+            app.EnvironmentalVariablesTree.CheckedNodes = [vpdNode, app.dTNode];
+            
+        catch ME
+            % Handle any unexpected errors
+            msgbox(sprintf('An error occurred while loading the environmental variables tree: %s', ME.message), 'Error', 'error');
+            rethrow(ME);
+        end
     end
-end
 
 
 
@@ -1950,54 +2026,67 @@ end
             % Custom colors for true and predicted data
             trueLineColor = [0, 0.45, 0.74];    % Dark blue for true data
             predictedLineColor = [0.85, 0.32, 0.1]; % Red for predicted data
-    
-            figure;
-            plot(app.TimestampsValidation, app.YValidation, ...
-                'Color', trueLineColor, 'LineWidth', 1.5, 'DisplayName', 'True Data'); % True data with custom color
-            hold on;
-            plot(app.TimestampsValidation, predictions, ...
-                '-.', 'Color', predictedLineColor, 'LineWidth', 1, 'DisplayName', 'Predicted Data'); % Predicted data with custom dashed line
-            xlabel('Timestamp');
-            ylabel('Sapflow');
-            % Replace underscores with \_ to ensure correct display in the title
-            sensorNameFormatted = strrep(sensorName, '_', '\_');
-            title(sprintf('%s Model - Sensor %s\nTrue vs. Predicted Over Time', modelType, sensorNameFormatted));
-            legend('show');
-            % Add MAE and RMSE to the bottom-right corner of the figure
-            text(max(app.TimestampsValidation), min(app.YValidation), ...
-                sprintf('MAE: %.4f\nRMSE: %.4f', mae, rmse), ...
-                'HorizontalAlignment', 'right', 'VerticalAlignment', 'bottom', ...
-                'BackgroundColor', 'white', 'EdgeColor', 'black');
-    
-            hold off;
-    
-            % Define custom colors
-            scatterColor = [0.1, 0.5, 0.8]; % Light blue for scatter points
-            lineColor = [0.9, 0.3, 0.2];    % Orange-red for the 1:1 line
-    
-            % Scatter plot of true vs. predicted
-            figure;
-            scatter(app.YValidation, predictions, 36, scatterColor, 'o');  % Blue circles
-            hold on;
-            % Add 1:1 line
-            minVal = min(min(app.YValidation), min(predictions));
-            maxVal = max(max(app.YValidation), max(predictions));
-            plot([minVal, maxVal], [minVal, maxVal], '--', 'Color', lineColor, 'LineWidth', 1.5, 'DisplayName', '1:1 Line'); % Custom dashed line
-            hold off;
-    
-            xlabel('True Sapflow');
-            ylabel('Predicted Sapflow');
-            % Replace underscores with \_ to ensure correct display in the title
-            sensorNameFormatted = strrep(sensorName, '_', '\_');
-            title(sprintf('%s Model - Sensor %s\nTrue vs. Predicted scatter', modelType, sensorNameFormatted));
-            legend('show');
-            grid on;
-            % Add MAE and RMSE to the bottom-right corner of the scatter plot
-            text(max(app.YValidation), min(predictions), ...
-                sprintf('MAE: %.4f\nRMSE: %.4f', mae, rmse), ...
-                'HorizontalAlignment', 'right', 'VerticalAlignment', 'bottom', ...
-                'BackgroundColor', 'white', 'EdgeColor', 'black');
-    
+
+            % Updated code to check the checkbox state before plotting
+            if app.ShowplotsaftertrainingCheckBox.Value
+                % Proceed with plotting if the checkbox is checked
+                app.TextArea.Value = [app.TextArea.Value; {'Plotting results after training...'}];
+                scroll(app.TextArea, 'bottom');
+                drawnow;
+            
+                figure;
+                plot(app.TimestampsValidation, app.YValidation, ...
+                    'Color', trueLineColor, 'LineWidth', 1.5, 'DisplayName', 'True Data'); % True data with custom color
+                hold on;
+                plot(app.TimestampsValidation, predictions, ...
+                    '-.', 'Color', predictedLineColor, 'LineWidth', 1, 'DisplayName', 'Predicted Data'); % Predicted data with custom dashed line
+                xlabel('Timestamp');
+                ylabel('Sapflow');
+                % Replace underscores with \_ to ensure correct display in the title
+                sensorNameFormatted = strrep(sensorName, '_', '\_');
+                title(sprintf('%s Model - Sensor %s\nTrue vs. Predicted Over Time', modelType, sensorNameFormatted));
+                legend('show');
+                % Add MAE and RMSE to the bottom-right corner of the figure
+                text(max(app.TimestampsValidation), min(app.YValidation), ...
+                    sprintf('MAE: %.4f\nRMSE: %.4f', mae, rmse), ...
+                    'HorizontalAlignment', 'right', 'VerticalAlignment', 'bottom', ...
+                    'BackgroundColor', 'white', 'EdgeColor', 'black');
+            
+                hold off;
+            
+                % Define custom colors
+                scatterColor = [0.1, 0.5, 0.8]; % Light blue for scatter points
+                lineColor = [0.9, 0.3, 0.2];    % Orange-red for the 1:1 line
+            
+                % Scatter plot of true vs. predicted
+                figure;
+                scatter(app.YValidation, predictions, 36, scatterColor, 'o');  % Blue circles
+                hold on;
+                % Add 1:1 line
+                minVal = min(min(app.YValidation), min(predictions));
+                maxVal = max(max(app.YValidation), max(predictions));
+                plot([minVal, maxVal], [minVal, maxVal], '--', 'Color', lineColor, 'LineWidth', 1.5, 'DisplayName', '1:1 Line'); % Custom dashed line
+                hold off;
+            
+                xlabel('True Sapflow');
+                ylabel('Predicted Sapflow');
+                % Replace underscores with \_ to ensure correct display in the title
+                sensorNameFormatted = strrep(sensorName, '_', '\_');
+                title(sprintf('%s Model - Sensor %s\nTrue vs. Predicted scatter', modelType, sensorNameFormatted));
+                legend('show');
+                grid on;
+                % Add MAE and RMSE to the bottom-right corner of the scatter plot
+                text(max(app.YValidation), min(predictions), ...
+                    sprintf('MAE: %.4f\nRMSE: %.4f', mae, rmse), ...
+                    'HorizontalAlignment', 'right', 'VerticalAlignment', 'bottom', ...
+                    'BackgroundColor', 'white', 'EdgeColor', 'black');
+            else
+                % Skip plotting if the checkbox is not checked
+                app.TextArea.Value = [app.TextArea.Value; {'Skipping plots as "Show plots after training" is unchecked.'}];
+                scroll(app.TextArea, 'bottom');
+                drawnow;
+            end
+
         catch ME
             % Handle any unexpected errors
             app.TextArea.Value = [app.TextArea.Value; {sprintf('Error validating model for sensor %s: %s', sensorName, ME.message)}];
@@ -3029,8 +3118,8 @@ end
                     error('Timestamp data is not of type datetime.');
                 end
         
-                % Plot sapflow data in blue
-                app.hPlot = plot(app.UIAxes4, app.timestamp, app.sapflow, '-', 'Color', [0.2 0.7, 0.4], 'LineWidth', 0.3);
+                % Plot sapflow data in green
+                app.hPlot = plot(app.UIAxes4, app.timestamp, app.sapflow, '-', 'Color', [0.2 0.7, 0.4], 'LineWidth', 1);
         
                 % Plot the interpolated baseline with light red lines
                 plot(app.UIAxes4, app.timestamp, app.baselineValues, '-', 'Color', [1 0.6 0.6], 'LineWidth', 1); % Light red lines
@@ -3078,7 +3167,7 @@ end
         
                 % Check if there is any data to plot
                 if ~isempty(filteredXData) && ~isempty(filteredYData)
-                    app.hOverviewPlot = plot(app.UIAxes3, filteredXData, filteredYData, '-', 'Color', [0.2 0.6, 0.7], 'LineWidth', 0.2); % Plot overview data in green
+                    app.hOverviewPlot = plot(app.UIAxes3, filteredXData, filteredYData, '-', 'Color', [0.2 0.6, 0.7], 'LineWidth', 1); % Plot overview data in green
                 else
                     warning('No data available for the selected zoom range.');
                 end
@@ -3086,21 +3175,27 @@ end
                 hold(app.UIAxes3, 'off');
         
                 % Set axes titles for UIAxes3
-                app.UIAxes3.XLabel.String = ['Overview: ', xDataColumn];
-                app.UIAxes3.YLabel.String = ['Overview: ', yDataColumn];
+                % Escape underscores in the column names
+                xDataColumnEscaped = strrep(xDataColumn, '_', '\_');
+                yDataColumnEscaped = strrep(yDataColumn, '_', '\_');
+                
+                % Set the axis labels with escaped names
+                app.UIAxes3.XLabel.String = ['Overview: ', xDataColumnEscaped];
+                app.UIAxes3.YLabel.String = ['Overview: ', yDataColumnEscaped];
+
 
                 % Plot on UIAxes5 with different colors
                 cla(app.UIAxes5); % Clear UIAxes5 before plotting
                 hold(app.UIAxes5, 'on');
                 
                 % Plot K-values
-                plot(app.UIAxes5, app.timestamp, k_values, '-', 'Color', [0.9 0.3, 0.1], 'LineWidth', 0.3, 'DisplayName', 'K-values');
+                plot(app.UIAxes5, app.timestamp, k_values, '-', 'Color', [0.9 0.3, 0.1], 'LineWidth', 1, 'DisplayName', 'K-values');
                 
                 % Plot VPD
-                plot(app.UIAxes5, app.timestamp, normalized_vpd, '-', 'Color', [0.2 0.7, 0.5], 'LineWidth', 0.3, 'DisplayName', 'VPD');
+                plot(app.UIAxes5, app.timestamp, normalized_vpd, '-', 'Color', [0.06 0.82, 0.80], 'LineWidth', 1, 'DisplayName', 'VPD');
                 
                 % Plot dTmax baseline
-                plot(app.UIAxes5, app.timestamp, dTmax_baseline, '-', 'Color', [0.5 0.3, 0.5], 'LineWidth', 0.3, 'DisplayName', 'dTmax baseline');
+                plot(app.UIAxes5, app.timestamp, dTmax_baseline, '-', 'Color', [0.5 0.3, 0.5], 'LineWidth', 1, 'DisplayName', 'dTmax baseline');
        
                
                 % Set labels and title for UIAxes5
@@ -5660,7 +5755,7 @@ end
 
         % Menu selected function: ManualMenu
         function ManualMenuSelected(app, event)
-            web("https://drive.google.com/file/d/1SY2H-VPlrfjW-QAQ76gNsfPjQdndGrBF/view?usp=drive_link", '-browser');
+            web("https://drive.google.com/file/d/1BsYgMy7CLjDYIC-DyEkThs7KFMjDC_if/view?usp=sharing", '-browser');
         end
 
         % Button pushed function: ExportDailyWaterUse
@@ -5734,8 +5829,13 @@ end
                     dateData = dateshift(datetime(timestampData), 'start', 'hour'); % Convert timestamp to hourly aggregation
                     combinedData = table(dateData, 'VariableNames', {'DateTime'});
                     groupingVar = 'DateTime';
+                elseif strcmp(exportType, 'Secondly')
+                    % No aggregation needed for Secondly, keep raw timestamp
+                    dateData = datetime(timestampData); % Use the original timestamp
+                    combinedData = table(dateData, 'VariableNames', {'Timestamp'});
+                    groupingVar = 'Timestamp';
                 end
-                
+                                
                 % Step 7: Iterate through all checked sapflow sensors and calculate water use
                 checkedNodes = app.Tree.CheckedNodes;
                 validSensorNodes = checkedNodes(~strcmp({checkedNodes.Text}, 'Sensors'));
@@ -5753,8 +5853,14 @@ end
                         % Calculate water use per second using the formula F = a * (K)^b
                         waterUsePerSecond = a * (sapflowData.^b);
                         
-                        % Multiply by the user-defined time interval (in seconds) to get water use for that interval
-                        waterUsePerInterval = waterUsePerSecond * timeStepInSeconds;
+                        % Apply the condition based on export type
+                        if ~strcmp(exportType, 'Secondly')
+                            % Multiply by the user-defined time interval (in seconds) for Hourly/Daily
+                            waterUsePerInterval = waterUsePerSecond * timeStepInSeconds;
+                        else
+                            % For Secondly, no multiplication needed
+                            waterUsePerInterval = waterUsePerSecond;
+                        end
                         
                         % Create a temporary table with Date/DateTime and water use data
                         tempTable = table(dateData, waterUsePerInterval, 'VariableNames', {groupingVar, ['SapFluxDensity_', sensorName]});
@@ -6033,7 +6139,7 @@ end
                         if ismember('TIMESTAMP', loadedData.Properties.VariableNames)
                             % Assign timestamps from the CSV to the variable
                             timestamps = loadedData.TIMESTAMP;
-                            app.timestamp = timestamps; % Update the app's timestamp property
+                            % app.timestamp = timestamps; % Update the app's timestamp property
                         else
                             uialert(app.SapFlowerUIFigure, 'The selected file does not contain a "TIMESTAMP" column.', ...
                                 'Invalid File', 'Icon', 'error');
@@ -6044,46 +6150,45 @@ end
                             'File Read Error', 'Icon', 'error');
                         return; % Exit the function if file reading fails
                     end
-
-                    % Set the axes in the App Designer (UIAxes8)
-                    ax = app.UIAxes8;
-                    grid(ax, 'on');
-                    hold(ax, 'on'); % Ensure that the grid is preserved during drawing
-                    xlabel(ax, 'Timestamp');
-                    ylabel(ax, 'Weights (0-1)');
-                    title(ax, 'Draw weights for Sapwood area increment across the study period: Click and Drag to Draw');
-                    ylim(ax, [0, 1]);
-                    cla(ax);
-                    % Set the X-axis limits with the numeric datenum values
-                    numericTimestamps = datenum(timestamps); % Convert datetime to numeric
-                    xlim(ax, [numericTimestamps(1), numericTimestamps(end)]); % Set axis limits
-                    
-                    % Set the X-axis ticks and labels to display datetime format
-                    xticks(ax, linspace(numericTimestamps(1), numericTimestamps(end), 10)); % Set 10 ticks along X-axis
-                    xticklabels(ax, datestr(xticks(ax), 'yyyy-mm-dd HH:MM:ss')); % Format as datetime
-                    
-                    % Disable default interactions on the axes
-                    disableDefaultInteractivity(ax);
-                    
-                    % Initialize the UITable6 in the App Designer
-                    app.UITable6.Data = {}; % Set initial empty data for the table
-                    app.UITable6.ColumnName = {'Timestamp', 'Weights'}; % Set column names
-                    app.UITable6.ColumnEditable = [true, true]; % Allow both columns to be edited
-                    app.UITable6.CellEditCallback = @updatePlotFromTable; % Callback to update plot
-                    
-                    % Initialize an empty table to store drawing data
-                    drawingTable = app.UITable6; % Reference the table in App Designer
-                    
-                    % Initialize variables
-                    isDrawing = false; % Flag to track if drawing is active
-                    lineHandle = []; % Handle for the line being drawn
-                    drawnData = []; % Array to store the drawn points
-                    isRedrawing = false; % Flag to track if a redraw is happening
-                    
-                    % Set the callback to start drawing when mouse button is pressed on the figure
-                    set(ax, 'ButtonDownFcn', @startDrawing);
-                    clearPlot(app);
                 end
+
+                % Set the axes in the App Designer (UIAxes8)
+                ax = app.UIAxes8;
+                grid(ax, 'on');
+                hold(ax, 'on'); % Ensure that the grid is preserved during drawing
+                xlabel(ax, 'Timestamp');
+                ylabel(ax, 'Weights (0-1)');
+                title(ax, 'Draw weights for Sapwood area increment across the study period: Click and Drag to Draw');
+                ylim(ax, [0, 1]);
+                cla(ax);
+                % Set the X-axis limits with the numeric datenum values
+                numericTimestamps = datenum(timestamps); % Convert datetime to numeric
+                xlim(ax, [numericTimestamps(1), numericTimestamps(end)]); % Set axis limits
+                
+                % Set the X-axis ticks and labels to display datetime format
+                xticks(ax, linspace(numericTimestamps(1), numericTimestamps(end), 10)); % Set 10 ticks along X-axis
+                xticklabels(ax, datestr(xticks(ax), 'yyyy-mm-dd HH:MM:ss')); % Format as datetime
+                
+                % Disable default interactions on the axes
+                disableDefaultInteractivity(ax);
+                
+                % Initialize the UITable6 in the App Designer
+                app.UITable6.Data = {}; % Set initial empty data for the table
+                app.UITable6.ColumnName = {'Timestamp', 'Weights'}; % Set column names
+                app.UITable6.ColumnEditable = [true, true]; % Allow both columns to be edited
+                app.UITable6.CellEditCallback = @updatePlotFromTable; % Callback to update plot
+                
+                % Initialize an empty table to store drawing data
+                drawingTable = app.UITable6; % Reference the table in App Designer
+                
+                % Initialize variables
+                isDrawing = false; % Flag to track if drawing is active
+                app.lineHandle = []; % Handle for the line being drawn
+                drawnData = []; % Array to store the drawn points
+                isRedrawing = false; % Flag to track if a redraw is happening
+                
+                % Set the callback to start drawing when mouse button is pressed on the figure
+                set(ax, 'ButtonDownFcn', @startDrawing);
 
             catch err
                 disp('Error initializing the plot or table.');
@@ -6095,7 +6200,7 @@ end
                 try
                     if isRedrawing
                         % If we are redrawing, clear the previous line
-                        delete(lineHandle); % Delete the previous line before starting a new one
+                        delete(app.lineHandle); % Delete the previous line before starting a new one
                         drawnData = []; % Clear the previous drawn data
                         isRedrawing = false; % Reset the redrawing flag
                     end
@@ -6107,7 +6212,7 @@ end
                     % Ensure the point is within the valid range
                     if x >= numericTimestamps(1) && x <= numericTimestamps(end) && y >= 0 && y <= 1
                         % Initialize the line
-                        lineHandle = plot(ax, x, y, 'r-', 'LineWidth', 1.5);
+                        app.lineHandle = plot(ax, x, y, 'r-', 'LineWidth', 1.5);
                         drawnData = [x, y];
                         isDrawing = true; % Set drawing flag
                 
@@ -6133,7 +6238,7 @@ end
                         if x >= numericTimestamps(1) && x <= numericTimestamps(end) && y >= 0 && y <= 1
                             drawnData = [drawnData; x, y];
                             % Update the line data
-                            set(lineHandle, 'XData', drawnData(:, 1), 'YData', drawnData(:, 2));
+                            set(app.lineHandle, 'XData', drawnData(:, 1), 'YData', drawnData(:, 2));
                         end
                     end
                 catch err
@@ -6226,8 +6331,8 @@ end
 
             % Callback: Clear the plot and reset the drawing state
             function clearPlot(app)
-                if ishandle(lineHandle)
-                    delete(lineHandle); % Delete the existing line
+                if ishandle(app.lineHandle)
+                    delete(app.lineHandle); % Delete the existing line
                 end
             
                 % Reset the drawing data and table
@@ -6595,12 +6700,11 @@ end
             if isempty(app.TreeSensorNameEditField.Value)
                 uialert(app.SapFlowerUIFigure, 'Please Define Tree/Sensor name', 'Tree/Sensor name missing or invalid');
                 return; % Exit the function to prevent further execution
-
             end
 
-            SinounalModel(app);
+            LogisticModel(app);
 
-            function SinounalModel(app)
+            function LogisticModel(app)
 
                 % Create a UI figure for user input
                 % Get the screen size
@@ -6697,11 +6801,11 @@ end
                 data = uit.Data;
                 try
                     % Convert input data to numeric arrays
-                    DOY = cell2mat(data(:, 1));  % Assuming data is already numeric
-                    SapwoodArea = cell2mat(data(:, 2));  % Assuming data is already numeric
+                    Ti = cell2mat(data(:, 1));  % DOY
+                    Li = cell2mat(data(:, 2));  % SapwoodArea
             
                     % Check for any NaN values that may result from invalid conversions
-                    if any(isnan(DOY)) || any(isnan(SapwoodArea))
+                    if any(isnan(Ti)) || any(isnan(Li))
                         uialert(fig, 'Please ensure that all input values are numeric.', 'Data Error');
                         return;
                     end
@@ -6711,7 +6815,7 @@ end
                 end
             
                 % Ensure at least 6 data points are provided
-                if numel(DOY) < 6 || numel(SapwoodArea) < 6
+                if numel(Ti) < 6 || numel(Li) < 6
                     uialert(fig, 'Please provide at least 6 data points.', 'Insufficient Data');
                     return;
                 end
@@ -6726,71 +6830,104 @@ end
                 end
             
                 % Fit the logistic model and predict
-                fitAndPredictLogistic(DOY, SapwoodArea, app, numPoints);
+                fitAndPredictGeneralizedLogistic(Ti, Li, app, numPoints);
             end
             
-            function fitAndPredictLogistic(Ti, Li, app, numPoints)
-                % Define the logistic model function
-                logisticModel = @(params, T) params(1) ./ (1 + exp(-params(2) * (T - params(3))));
+                        
+            function fitAndPredictGeneralizedLogistic(Ti, Li, app, numPoints)
+                % Define the generalized logistic model function
+                generalizedLogisticModel = @(params, T) params(1) + (params(2) - params(1)) ./ ...
+                    (1 + params(7) .* exp(-params(3) .* (T - params(5))).^params(6)).^(1/params(4));
             
-                % Initial guess for parameters [Lmax, k, T0]
-                initialParams = [max(Li), 0.1, mean(Ti)];
+                % Initial guess for parameters [A, K, C, Q, B, v, nu, K2]
+                initialParams = [min(Li), max(Li), 0.1, 1, mean(Ti), 1, 1, max(Li)];
             
-                % Fit the logistic function using lsqcurvefit
-                options = optimset('Display', 'off');
-                fitParams = lsqcurvefit(@(params, T) logisticModel(params, T), ...
-                                        initialParams, Ti, Li, [], [], options);
+                % Set options for lsqcurvefit
+                options = optimset('Display', 'off', 'MaxIter', 5000, 'TolFun', 1e-12, 'TolX', 1e-12);
             
-                % Extract fitted parameters
-                Lmax = fitParams(1);
-                k = fitParams(2);
-                T0 = fitParams(3);
+                % Maximum number of iterations for fitting
+                maxIter = 200;
+                tolerance = 1e-6;
+                allFitParams = zeros(maxIter, 8);
             
-                % Display fitted parameters
-                disp('Fitted Parameters:');
-                fprintf('Lmax (Carrying Capacity): %.4f\n', Lmax);
-                fprintf('k (Growth Rate): %.4f\n', k);
-                fprintf('T0 (Inflection Point): %.4f\n', T0);
+                % Fit the generalized logistic function multiple times
+                lb = [min(Li), max(Li), 0.001, 0.1, min(Ti), 0.1, 0.1, max(Li)]; % Lower bounds
+                ub = [min(Li), 1.5 * max(Li), 1, 10, max(Ti), 10, 10, 1.5 * max(Li)]; % Upper bounds
             
-                % Predict values over a finer interval of Ti using user-defined resolution
+                for iter = 1:maxIter
+                    noisyInitialParams = initialParams + randn(size(initialParams)) * 0.01;
+                    [fitParams, ~, ~, ~, ~] = lsqcurvefit(@(params, T) generalizedLogisticModel(params, T), ...
+                                            noisyInitialParams, Ti, Li, lb, ub, options);
+            
+                    allFitParams(iter, :) = fitParams;
+            
+                    if iter > 1 && all(abs(fitParams - allFitParams(iter-1, :)) < tolerance)
+                        disp(['Convergence reached after ', num2str(iter), ' iterations.']);
+                        break;
+                    end
+                end
+            
+                % Calculate the average of the fitted parameters from all iterations
+                avgFitParams = mean(allFitParams(1:iter, :), 1);
+            
+                % Extract averaged fitted parameters
+                A = avgFitParams(1);
+                K = avgFitParams(2);
+                C = avgFitParams(3);
+                Q = avgFitParams(4);
+                B = avgFitParams(5);
+                v = avgFitParams(6);
+                nu = avgFitParams(7);
+                K2 = avgFitParams(8);
+            
+                % Display averaged fitted parameters
+                disp('Averaged Fitted Parameters:');
+                fprintf('A (Lower Asymptote): %.4f\n', A);
+                fprintf('K (Upper Asymptote): %.4f\n', K);
+                fprintf('C (Growth Rate): %.4f\n', C);
+                fprintf('Q (Growth Distribution): %.4f\n', Q);
+                fprintf('B (Time of Max Growth): %.4f\n', B);
+                fprintf('v (Symmetry): %.4f\n', v);
+                fprintf('nu (Growth Distribution): %.4f\n', nu);
+                fprintf('K2 (Upper Asymptote): %.4f\n', K2);
+            
+                % Predict values over a finer interval of Ti
                 Ti_fine = linspace(min(Ti), max(Ti), numPoints)';
-                Li_pred = logisticModel(fitParams, Ti_fine);
+                Li_pred = generalizedLogisticModel(avgFitParams, Ti_fine);
             
                 % Convert DOY to datetime
-                timestamps = doyToDatetime(Ti_fine, app); % Ensure the `app` object is passed here
+                timestamps = doyToDatetime(Ti_fine, app);
             
                 % Plot the results
                 figure;
                 plot(Ti, Li, 'o', 'LineWidth', 1.5, 'DisplayName', 'Observed Data');
                 hold on;
-                plot(Ti_fine, Li_pred, '-', 'LineWidth', 1.5, 'DisplayName', 'Logistic Fit');
+                plot(Ti_fine, Li_pred, '-', 'LineWidth', 1.5, 'DisplayName', 'Generalized Logistic Fit');
                 xlabel('DOY');
                 ylabel('SapwoodArea');
-                title('Logistic Function Fitting');
+                title('Generalized Logistic Function Fitting');
                 legend;
                 grid on;
             
                 % Add text annotation for fitted parameters
-                annotationString = sprintf('Lmax: %.4f\nk: %.4f\nT0: %.4f', Lmax, k, T0);
+                annotationString = sprintf('A: %.4f\nK: %.4f\nC: %.4f\nQ: %.4f\nB: %.4f\nv: %.4f\nu: %.4f\nK2: %.4f', A, K, C, Q, B, v, nu, K2);
                 text(max(Ti) - range(Ti) * 0.3, max(Li) * 0.9, annotationString, ...
                     'VerticalAlignment', 'top', 'BackgroundColor', 'white', ...
                     'EdgeColor', 'black', 'Margin', 5);
             
                 % Get the TreeSensorName value from the EditField
                 sensorName = app.TreeSensorNameEditField.Value;
-                
+            
                 % Create the column name dynamically
                 columnName = ['SapwoodArea_' sensorName];
-                
+            
                 % Create the predicted table with the dynamic column name
                 predictedTable = table(timestamps, Li_pred, ...
                     'VariableNames', {'Timestamp', columnName});
-
             
                 % Prompt user to select the save location for the CSV file
                 [fileName, pathName] = uiputfile('*.csv', 'Save Predicted SapwoodArea As');
             
-                % Check if user canceled the file dialog
                 if isequal(fileName, 0)
                     disp('User canceled the file save operation.');
                     return;
@@ -6804,7 +6941,6 @@ end
                 disp(['Predicted SapwoodArea saved to "', fullFileName, '".']);
             end
 
-            
             % Function to convert DOY to datetime
             function datetimeValues = doyToDatetime(DOY, app)
                 % Assign the value to baseDate
@@ -6845,7 +6981,6 @@ end
             OutFolder = char(app.Output.Value);
             checkOutputPath(app);
             try
-                % Prompt user to select a folder containing Sapwood files
                 % Set the output folder
                 OutputFolder = OutFolder;                
                 Table2Folder = uigetdir(pwd, 'Select Folder Containing SapwoodArea Files');
@@ -6875,15 +7010,20 @@ end
                     mkdir(WaterUseFolder);
                 end
             
+                % Clear any existing plot in app.UIAxes6_8
+                cla(app.UIAxes6_8, 'reset');
+                hold(app.UIAxes6_8, 'on'); % Prepare for plotting multiple datasets
+            
+                % Get selected export type from the dropdown
+                exportType = app.ExportTypeDropDown.Value;  % e.g., "Hourly", "Secondly", or "Daily"
+                
                 % Iterate over all Table1 files
                 for Table1Idx = 1:length(Table1Files)
                     try
                         % Read the current Table1 file
                         Table1File = fullfile(Table1Files(Table1Idx).folder, Table1Files(Table1Idx).name);
                         Table1 = readtable(Table1File);
-            
-                        % Ensure the timestamp column in Table1 is in datetime format
-                        Table1.TIMESTAMP = datetime(Table1.TIMESTAMP, 'InputFormat', 'yyyy-MM-dd HH:mm:ss'); % Adjust as needed
+                        Table1.TIMESTAMP = datetime(Table1.TIMESTAMP, 'InputFormat', 'yyyy-MM-dd HH:mm:ss');
             
                         % Iterate over all Table2 files
                         for Table2Idx = 1:length(Table2Files)
@@ -6892,92 +7032,104 @@ end
                                 Table2File = fullfile(Table2Files(Table2Idx).folder, Table2Files(Table2Idx).name);
                                 Table2 = readtable(Table2File);
             
-                                % Rename the timestamp column in Table2 to match Table1
+                                % Rename and format timestamp columns
                                 if any(strcmpi(Table2.Properties.VariableNames, 'Timestamp'))
                                     Table2.Properties.VariableNames{strcmpi(Table2.Properties.VariableNames, 'Timestamp')} = 'TIMESTAMP';
                                 end
+                                Table2.TIMESTAMP = datetime(Table2.TIMESTAMP, 'InputFormat', 'yyyy-MM-dd HH:mm:ss');
             
-                                % Ensure the timestamp column in Table2 is in datetime format
-                                if any(strcmp(Table2.Properties.VariableNames, 'TIMESTAMP'))
-                                    Table2.TIMESTAMP = datetime(Table2.TIMESTAMP, 'InputFormat', 'yyyy-MM-dd HH:mm:ss'); % Adjust as needed
-                                else
-                                    warning('File %s does not contain a TIMESTAMP column and will be skipped.', Table2Files(Table2Idx).name);
-                                    continue;
-                                end
-            
-                                % Filter Table1 to only include timestamps within the range of Table2
+                                % Filter and merge tables
                                 minTime = min(Table2.TIMESTAMP);
                                 maxTime = max(Table2.TIMESTAMP);
                                 validRows = Table1.TIMESTAMP >= minTime & Table1.TIMESTAMP <= maxTime;
-            
-                                if ~any(validRows)
-                                    warning('No matching timestamps in Sapfluxdata (F) for file %s. Skipping.', Table2Files(Table2Idx).name);
-                                    continue;
-                                end
-            
-                                % Subset Table1 to valid rows
+                                if ~any(validRows), continue; end
                                 FilteredTable1 = Table1(validRows, :);
-            
-                                % Convert datetime columns to numeric format for knnsearch
-                                Table1Numeric = datenum(FilteredTable1.TIMESTAMP);
-                                Table2Numeric = datenum(Table2.TIMESTAMP);
-            
-                                % Find the nearest timestamps in Table2 for each timestamp in Table1
-                                [idx, ~] = knnsearch(Table2Numeric, Table1Numeric);
-            
-                                % Subset Table2 based on the matched indices
+                                [idx, ~] = knnsearch(datenum(Table2.TIMESTAMP), datenum(FilteredTable1.TIMESTAMP));
                                 FilteredTable2 = Table2(idx, :);
-            
-                                % Ensure the timestamps match correctly
                                 FilteredTable2.TIMESTAMP = FilteredTable1.TIMESTAMP;
-            
-                                % Merge the filtered Table2 data with Table1
                                 MergedTable = join(FilteredTable1, FilteredTable2, 'Keys', 'TIMESTAMP');
             
-                                % Identify columns that are sap flux values in Table1 (e.g., F_B1_13849)
+                                % Process water use calculation and plotting
                                 F_columns = MergedTable.Properties.VariableNames(startsWith(MergedTable.Properties.VariableNames, 'F_'));
-            
-                                % Loop over the sap flux columns and find matching sapwood area columns in Table2
                                 for i = 1:length(F_columns)
-                                    % Extract the component from the F_column (e.g., B1_13849)
-                                    component = F_columns{i}(3:end);  % Remove 'F_' from the column name
-            
-                                    % Find the matching SapwoodArea column in Table2 (e.g., SapwoodArea_B1_13849)
+                                    component = F_columns{i}(3:end);
                                     matchingColumn = ['SapwoodArea_' component];
+                                    timeStepInSeconds = [0; seconds(diff(MergedTable.TIMESTAMP))]; % Ensure it has the same length
             
-                                    % Check if the matching column exists in Table2
                                     if ismember(matchingColumn, FilteredTable2.Properties.VariableNames)
-                                        % Create a new column for WaterUse (e.g., WaterUse_B1_13849)
                                         WaterUseColumnName = ['WaterUse_' component];
+                                        
+                                        % Apply timeStepInSeconds based on the selected export type
+                                        if strcmp(exportType, 'Hourly') || strcmp(exportType, 'Daily')
+                                            MergedTable.(WaterUseColumnName) = MergedTable.(F_columns{i}) .* FilteredTable2.(matchingColumn) .* timeStepInSeconds;
+                                        elseif strcmp(exportType, 'Secondly')
+                                            MergedTable.(WaterUseColumnName) = MergedTable.(F_columns{i}) .* FilteredTable2.(matchingColumn);
+                                        end
             
-                                        % Perform the multiplication: F_B1_13849 * SapwoodArea_B1_13849
-                                        MergedTable.(WaterUseColumnName) = MergedTable.(F_columns{i}) .* FilteredTable2.(matchingColumn);
+                                        % Aggregating WaterUse data for different time resolutions
+                                        % Hourly
+                                        if strcmp(exportType, 'Hourly')
+                                            MergedTable.HourlyTimestamp = dateshift(MergedTable.TIMESTAMP, 'start', 'hour');
+                                            HourlyData = varfun(@sum, MergedTable, 'InputVariables', ['WaterUse_' F_columns{i}(3:end)], ...
+                                                'GroupingVariables', 'HourlyTimestamp');
+                                            writetable(HourlyData, fullfile(WaterUseFolder, ['Hourly_WaterUse_' component '.csv']));
+                                            
+                                            % Plot Hourly Data
+                                            plot(app.UIAxes6_8, HourlyData.HourlyTimestamp, HourlyData.(['sum_WaterUse_' component]), 'DisplayName', ['Hourly ' component]);
+                                            title(app.UIAxes6_8, ['Hourly Water Use for ' component]);
+                                        end
             
-                                        % Define the full path for saving the current merged table
-                                        OutputFile = fullfile(WaterUseFolder, sprintf('MergedTableWithWaterUse_%s_%s.csv', Table1Files(Table1Idx).name, component));
+                                        % Secondly
+                                        if strcmp(exportType, 'Secondly')
+                                            MergedTable.SecondlyTimestamp = dateshift(MergedTable.TIMESTAMP, 'start', 'second');
+                                            SecondlyData = varfun(@sum, MergedTable, 'InputVariables', ['WaterUse_' F_columns{i}(3:end)], ...
+                                                'GroupingVariables', 'SecondlyTimestamp');
+                                            writetable(SecondlyData, fullfile(WaterUseFolder, ['Secondly_WaterUse_' component '.csv']));
+                                            
+                                            % Plot Secondly Data
+                                            plot(app.UIAxes6_8, SecondlyData.SecondlyTimestamp, SecondlyData.(['sum_WaterUse_' component]), 'DisplayName', ['Secondly ' component]);
+                                            title(app.UIAxes6_8, ['Secondly Water Use for ' component]);
+                                        end
             
-                                        % Save the merged table to the WaterUse subfolder
-                                        writetable(MergedTable, OutputFile);
+                                        % Daily
+                                        if strcmp(exportType, 'Daily')
+                                            MergedTable.DailyTimestamp = dateshift(MergedTable.TIMESTAMP, 'start', 'day');
+                                            DailyData = varfun(@sum, MergedTable, 'InputVariables', ['WaterUse_' F_columns{i}(3:end)], ...
+                                                'GroupingVariables', 'DailyTimestamp');
+                                            writetable(DailyData, fullfile(WaterUseFolder, ['Daily_WaterUse_' component '.csv']));
+                                            
+                                            % Plot Daily Data
+                                            plot(app.UIAxes6_8, DailyData.DailyTimestamp, DailyData.(['sum_WaterUse_' component]), 'DisplayName', ['Daily ' component]);
+                                            title(app.UIAxes6_8, ['Daily Water Use for ' component]);
+                                        end
                                     end
                                 end
+            
                             catch ME2
-                                warning('An error occurred while processing file %s:\n%s', Table2Files(Table2Idx).name, ME2.message);
+                                warning('Error processing file %s: %s', Table2Files(Table2Idx).name, ME2.message);
                                 continue;
                             end
                         end
                     catch ME1
-                        warning('An error occurred while processing Table1 file %s:\n%s', Table1Files(Table1Idx).name, ME1.message);
+                        warning('Error processing Table1 file %s: %s', Table1Files(Table1Idx).name, ME1.message);
                         continue;
                     end
                 end
             
-                % Display a popup message to notify the user
+                % Finalize the plot
+                hold(app.UIAxes6_8, 'off');
+                legend(app.UIAxes6_8, 'show');
+                xlabel(app.UIAxes6_8, 'Timestamp');
+                ylabel(app.UIAxes6_8, 'Water Use');
+                title(app.UIAxes6_8, 'Water Use Over Time');
+            
+                % Display completion message
                 msgbox(sprintf('All valid tables have been processed and saved to:\n%s', WaterUseFolder), 'Process Completed');
             
             catch ME
-                % Display an error message with the cause of the error
                 errordlg(sprintf('An error occurred:\n%s', ME.message), 'Error');
             end
+
         end
     end
 
@@ -7920,7 +8072,7 @@ end
             % Create InitialLearningRateEditField
             app.InitialLearningRateEditField = uieditfield(app.GridLayout14, 'numeric');
             app.InitialLearningRateEditField.Limits = [0 Inf];
-            app.InitialLearningRateEditField.ValueDisplayFormat = '%.3f';
+            app.InitialLearningRateEditField.ValueDisplayFormat = '%.4f';
             app.InitialLearningRateEditField.Layout.Row = 12;
             app.InitialLearningRateEditField.Layout.Column = 2;
             app.InitialLearningRateEditField.Value = 0.001;
@@ -8039,6 +8191,13 @@ end
             app.ScaleDataCheckBox.Layout.Row = 9;
             app.ScaleDataCheckBox.Layout.Column = [7 8];
             app.ScaleDataCheckBox.Value = true;
+
+            % Create ShowplotsaftertrainingCheckBox
+            app.ShowplotsaftertrainingCheckBox = uicheckbox(app.GridLayout14);
+            app.ShowplotsaftertrainingCheckBox.Text = 'Show plots after training';
+            app.ShowplotsaftertrainingCheckBox.FontColor = [0.851 0.3255 0.098];
+            app.ShowplotsaftertrainingCheckBox.Layout.Row = 10;
+            app.ShowplotsaftertrainingCheckBox.Layout.Column = 7;
 
             % Create GapFillingTab
             app.GapFillingTab = uitab(app.TabGroup);
@@ -8201,6 +8360,20 @@ end
             app.UIAxes6_7.Box = 'on';
             app.UIAxes6_7.Position = [2 4 1069 226];
 
+            % Create ViewWaterUseTab
+            app.ViewWaterUseTab = uitab(app.TabGroup2);
+            app.ViewWaterUseTab.Title = 'View Water Use';
+            app.ViewWaterUseTab.BackgroundColor = [0.94 0.94 0.94];
+
+            % Create UIAxes6_8
+            app.UIAxes6_8 = uiaxes(app.ViewWaterUseTab);
+            title(app.UIAxes6_8, 'Title')
+            xlabel(app.UIAxes6_8, 'X')
+            ylabel(app.UIAxes6_8, 'Y')
+            zlabel(app.UIAxes6_8, 'Z')
+            app.UIAxes6_8.Box = 'on';
+            app.UIAxes6_8.Position = [2 4 1069 226];
+
             % Create RawDataLabel
             app.RawDataLabel = uilabel(app.GridLayout19);
             app.RawDataLabel.FontWeight = 'bold';
@@ -8249,12 +8422,12 @@ end
 
             % Create ExportTypeDropDown
             app.ExportTypeDropDown = uidropdown(app.GridLayout19);
-            app.ExportTypeDropDown.Items = {'Hourly', 'Daily'};
+            app.ExportTypeDropDown.Items = {'Secondly', 'Hourly', 'Daily'};
             app.ExportTypeDropDown.FontColor = [0 0 0];
             app.ExportTypeDropDown.BackgroundColor = [0.96 0.96 0.96];
             app.ExportTypeDropDown.Layout.Row = 7;
             app.ExportTypeDropDown.Layout.Column = 5;
-            app.ExportTypeDropDown.Value = 'Hourly';
+            app.ExportTypeDropDown.Value = 'Secondly';
 
             % Create ExportWaterUseButton
             app.ExportWaterUseButton = uibutton(app.GridLayout19, 'push');
