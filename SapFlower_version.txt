@@ -1,0 +1,4 @@
+version: 1.0.1
+release_date: 2025-01-01
+changelog: Bug fixes and performance improvements.
+download_url: https://example.com/app/download
