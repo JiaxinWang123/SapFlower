@@ -1,7 +1,9 @@
 # SapFlower
 
 The standalone GUI App was written in Matlab, and it is now completed and available at [Zenodo](https://zenodo.org/doi/10.5281/zenodo.13665919) and [Figshare](https://doi.org/10.6084/m9.figshare.27015787). 
-## The latest version will be available now.
+## The latest version is available now.
+
+There are might be some bugs and I am fixing them.
 
 Video Tutorial [here](https://zenodo.org/records/14183938/files/SapFlower_Video_Tutorial.mkv?download=1).
 
