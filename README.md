@@ -5,7 +5,7 @@ The standalone GUI App was written in Matlab, and it is now completed and availa
 
 There are might be some bugs and I am fixing them.
 
-Video Tutorial [here](https://zenodo.org/records/14183938/files/SapFlower_Video_Tutorial.mkv?download=1).
+Video Tutorial [here](https://drive.google.com/file/d/1cskIYdHHHBYsw1U-L66W-yFqgLAlNwx7/view?usp=sharing).
 
 Please note that functions for data smoothing have been disabled and will be made available soon.
 
