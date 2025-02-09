@@ -353,7 +353,7 @@ methods (Access = private)
             downloadUrl = parsedData.download_url;
             
             % Current version of the app
-            currentVersion = "1.0.2";  % Update this with your app's current version
+            currentVersion = "1.0.2.1";  % Update this with your app's current version
             disp("Current Version:");
             disp(currentVersion);
             disp("Latest Version:");
