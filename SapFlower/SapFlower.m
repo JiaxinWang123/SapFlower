@@ -328,6 +328,89 @@ classdef SapFlower < matlab.apps.AppBase
         
 
     end
+%% Version updates %%
+
+methods (Access = private)
+    function checkForUpdates(app)
+        % Define the URL where the JSON file is stored
+        versionURL = "https://raw.githubusercontent.com/JiaxinWang123/SapFlower/main/SapFlower_version.json";
+        
+        try
+            % Fetch the JSON file content
+            rawData = webread(versionURL, weboptions('Timeout', 5));
+            disp("Raw Data:");
+            disp(rawData);
+            
+            % Parse the raw JSON data into a MATLAB structure
+            parsedData = jsondecode(rawData);
+            disp("Parsed Data:");
+            disp(parsedData);
+            
+            % Extract version and details
+            latestVersion = parsedData.version;
+            releaseDate = parsedData.release_date;
+            changelog = parsedData.changelog;
+            downloadUrl = parsedData.download_url;
+            
+            % Current version of the app
+            currentVersion = "1.0.2";  % Update this with your app's current version
+            disp("Current Version:");
+            disp(currentVersion);
+            disp("Latest Version:");
+            disp(latestVersion);
+            
+            % Check if the app is up to date
+            if strcmp(latestVersion, currentVersion)
+                % If up to date, print version in the OutputTextArea
+                app.OutputTextArea.Value = sprintf('Your app is up to date.\nCurrent version: %s', currentVersion);
+                scroll(app.OutputTextArea, 'bottom');
+                drawnow;
+            else
+                % If not up to date, show a custom dialog with the update details
+                msg = sprintf("A new version (%s) is available!\nRelease date: %s\n\nChangelog: %s", ...
+                    latestVersion, releaseDate, changelog);
+                app.createCustomDialog(msg, downloadUrl);
+            end
+        catch ME
+            % Handle errors and display the error message
+            disp("Error occurred while checking for updates:");
+            disp(ME.message);
+            app.createCustomDialog("Unable to check for updates. Please try again later.", "");
+        end
+    end
+
+    function createCustomDialog(app, msg, downloadUrl)
+        % Get the screen size (primary monitor)
+        screenSize = get(0, 'ScreenSize');  % [left, bottom, width, height]
+        
+        % Dialog figure size
+        dialogWidth = 400;
+        dialogHeight = 200;
+        
+        % Calculate centered position
+        centerX = (screenSize(3) - dialogWidth) / 2;
+        centerY = (screenSize(4) - dialogHeight) / 2;
+        
+        % Create a custom figure for the dialog
+        dialogFig = uifigure('Name', 'Update Check', 'Position', [centerX, centerY, dialogWidth, dialogHeight]);
+
+        % Create a label to display the message
+        lbl = uilabel(dialogFig, 'Position', [20, 110, 360, 60], 'Text', msg, 'FontSize', 12, 'WordWrap', 'on');
+
+        % If a download URL exists, create a button to open it
+        if ~isempty(downloadUrl)
+            btn = uibutton(dialogFig, 'push', 'Position', [150, 30, 110, 30], ...
+                'Text', 'Download Update', 'ButtonPushedFcn', @(btn,event) app.openDownloadLink(downloadUrl));
+        end
+    end
+
+    function openDownloadLink(~, downloadUrl)
+        % Open the download URL in the default web browser
+        web(downloadUrl, '-browser');
+    end
+end
+
+
 
 %% Startup %%
 methods (Access = public)
@@ -345,6 +428,8 @@ methods (Access = public)
         
         % Set the app position
         app.SapFlowerUIFigure.Position = [centerX, centerY, appWidth, appHeight];
+        % Automatically check for updates when the app starts
+        app.checkForUpdates();
     end
 end
 
