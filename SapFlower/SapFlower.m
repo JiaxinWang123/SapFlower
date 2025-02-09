@@ -362,7 +362,7 @@ methods (Access = private)
             % Check if the app is up to date
             if strcmp(latestVersion, currentVersion)
                 % If up to date, print version in the OutputTextArea
-                app.OutputTextArea.Value = sprintf('Your app is up to date.\nCurrent version: %s', currentVersion);
+                app.OutputTextArea.Value = sprintf('Your SapFlower is up to date.\nCurrent version: %s', currentVersion);
                 scroll(app.OutputTextArea, 'bottom');
                 drawnow;
             else
@@ -3625,13 +3625,30 @@ end
                 end
         
                 app.setDOY(data);
-                app.temperature = tempFilteredData.AirTC_Avg;
-                app.humidity = tempFilteredData.RH;
-                app.par = tempFilteredData.PAR_Den_Avg;
-        
-                % Calculate VPD
-                app.VPD = app.calculateVPD(app.temperature, app.humidity);
-        
+
+                if iscell(tempFilteredData.AirTC_Avg)
+                    app.temperature = str2double(tempFilteredData.AirTC_Avg);
+                else
+                    app.temperature = tempFilteredData.AirTC_Avg;
+                end
+                
+                if iscell(tempFilteredData.RH)
+                    app.humidity = str2double(tempFilteredData.RH);
+                else
+                    app.humidity = tempFilteredData.RH;
+                end
+                
+                if iscell(tempFilteredData.PAR_Den_Avg)
+                    app.par = str2double(tempFilteredData.PAR_Den_Avg);
+                else
+                    app.par = tempFilteredData.PAR_Den_Avg;
+                end
+                        
+                                % Calculate VPD
+                if any(~isnumeric(app.temperature)) || any(~isnumeric(app.humidity))
+                    error('Temperature or humidity contains non-numeric values.');
+                end
+
                 % Initialize app.Config as a structure
                 app.Config = struct();
                 
@@ -6197,6 +6214,10 @@ end
 
         % Button pushed function: StartAnalysisButton
         function StartAnalysisButtonPushed(app, event)
+        % Clear any lingering mouse movement and button-up callbacks
+        set(gcf, 'WindowButtonMotionFcn', '');
+        set(gcf, 'WindowButtonUpFcn', '');
+
             % If no CSV file is specified, set a default filename
             try
                 if nargin < 1
@@ -8543,6 +8564,7 @@ end
             xlabel(app.UIAxes10, 'X')
             ylabel(app.UIAxes10, 'Y')
             zlabel(app.UIAxes10, 'Z')
+            app.UIAxes10.Box = 'on';
             app.UIAxes10.Layout.Row = 2;
             app.UIAxes10.Layout.Column = [9 13];
 
@@ -8552,6 +8574,7 @@ end
             xlabel(app.UIAxes9, 'X')
             ylabel(app.UIAxes9, 'Y')
             zlabel(app.UIAxes9, 'Z')
+            app.UIAxes9.Box = 'on';
             app.UIAxes9.Layout.Row = 2;
             app.UIAxes9.Layout.Column = [2 8];
 
@@ -8561,6 +8584,7 @@ end
             xlabel(app.UIAxes8, 'X')
             ylabel(app.UIAxes8, 'Y')
             zlabel(app.UIAxes8, 'Z')
+            app.UIAxes8.Box = 'on';
             app.UIAxes8.Layout.Row = 1;
             app.UIAxes8.Layout.Column = [2 13];
 
