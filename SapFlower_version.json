@@ -1,6 +1,7 @@
 {
-    "version": "1.0.2",
+    "version": "1.0.2.1",
     "release_date": "2025-01-025",
-    "changelog": "Bug fixes and performance improvements.",
+    "changelog": "Fixed bug: "Error reading the data file: Undefined function 'times' for input arguments of type 'cell'."
+Fixed bug that users may not be able to stop drawing lines in Sapwood area analysis tab after gap-filling.",
     "download_url": "https://doi.org/10.5281/zenodo.13665919"
 }
