@@ -6217,6 +6217,8 @@ end
         % Clear any lingering mouse movement and button-up callbacks
         set(gcf, 'WindowButtonMotionFcn', '');
         set(gcf, 'WindowButtonUpFcn', '');
+        % Disable brush mode while processing
+        disableBrushMode(app);
 
             % If no CSV file is specified, set a default filename
             try
@@ -6303,6 +6305,8 @@ end
             
             % Callback: Start drawing when the user clicks
             function startDrawing(~, ~)
+                % Disable brush mode while processing
+                disableBrushMode(app);
                 try
                     if isRedrawing
                         % If we are redrawing, clear the previous line
@@ -6365,7 +6369,8 @@ end
                     % Clear the motion and button up callbacks to stop drawing
                     set(gcf, 'WindowButtonMotionFcn', '');
                     set(gcf, 'WindowButtonUpFcn', '');
-                
+                    drawnow; % Ensure UI updates properly
+
                     % Ensure there is data in drawnData before proceeding
                     if isempty(drawnData)
                         disp('No data was drawn, stopping.');
@@ -6428,6 +6433,24 @@ end
                     disp(err.message);
                 end
             end
+
+            function disableBrushMode(app)
+                try
+                    % Disable brush tool for the whole figure (affects all axes)
+                    brush(app.SapFlowerUIFigure, 'off');
+                    disp('Brush tool disabled.');
+            
+                    % Disable other interactive tools to prevent conflicts
+                    zoom(app.SapFlowerUIFigure, 'off');
+                    pan(app.SapFlowerUIFigure, 'off');
+                    datacursormode(app.SapFlowerUIFigure, 'off');
+            
+                catch err
+                    disp('Error disabling brush mode.');
+                    disp(err.message);
+                end
+            end
+           
 
             % Set the callback for the Paste button (app.PasteButton)
             app.PasteButton.ButtonPushedFcn = @(src, event) pasteData(app);
