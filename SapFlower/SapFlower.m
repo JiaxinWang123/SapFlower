@@ -95,9 +95,9 @@ classdef SapFlower < matlab.apps.AppBase
         SaveDataAsButton                matlab.ui.control.Button
         UndoDeletionButton              matlab.ui.control.Button
         DeletedTdataButton              matlab.ui.control.Button
-        UIAxes3                         matlab.ui.control.UIAxes
-        UIAxes4                         matlab.ui.control.UIAxes
         UIAxes5                         matlab.ui.control.UIAxes
+        UIAxes4                         matlab.ui.control.UIAxes
+        UIAxes3                         matlab.ui.control.UIAxes
         ModelTrainingTab                matlab.ui.container.Tab
         GridLayout14                    matlab.ui.container.GridLayout
         ShowplotsaftertrainingCheckBox  matlab.ui.control.CheckBox
@@ -219,9 +219,9 @@ classdef SapFlower < matlab.apps.AppBase
         ClearButton                     matlab.ui.control.Button
         PasteButton                     matlab.ui.control.Button
         UITable6                        matlab.ui.control.Table
-        UIAxes10                        matlab.ui.control.UIAxes
-        UIAxes9                         matlab.ui.control.UIAxes
         UIAxes8                         matlab.ui.control.UIAxes
+        UIAxes9                         matlab.ui.control.UIAxes
+        UIAxes10                        matlab.ui.control.UIAxes
         ContextMenu                     matlab.ui.container.ContextMenu
         SmoothdataMenu                  matlab.ui.container.Menu
         WaveletTransformMenu            matlab.ui.container.Menu
@@ -338,13 +338,13 @@ methods (Access = private)
         try
             % Fetch the JSON file content
             rawData = webread(versionURL, weboptions('Timeout', 5));
-            disp("Raw Data:");
-            disp(rawData);
+            % disp("Raw Data:");
+            % disp(rawData);
             
             % Parse the raw JSON data into a MATLAB structure
             parsedData = jsondecode(rawData);
-            disp("Parsed Data:");
-            disp(parsedData);
+            % disp("Parsed Data:");
+            % disp(parsedData);
             
             % Extract version and details
             latestVersion = parsedData.version;
@@ -354,10 +354,10 @@ methods (Access = private)
             
             % Current version of the app
             currentVersion = "1.0.2.1";  % Update this with your app's current version
-            disp("Current Version:");
-            disp(currentVersion);
-            disp("Latest Version:");
-            disp(latestVersion);
+            % disp("Current Version:");
+            % disp(currentVersion);
+            % disp("Latest Version:");
+            % disp(latestVersion);
             
             % Check if the app is up to date
             if strcmp(latestVersion, currentVersion)
@@ -563,7 +563,6 @@ methods (Access = public)
             drawnow;
         end
     end
-
 end
 
 %% Plotting for gapfilling %%
@@ -573,7 +572,7 @@ methods (Access = public)
         try
             % Clear existing nodes in the app.Tree
             delete(app.Tree.Children);
-    
+
             % Add the top-level node
             sensorNode = uitreenode(app.Tree, 'Text', 'Sensors', 'NodeData', 'Sensors');
     
@@ -592,7 +591,6 @@ methods (Access = public)
             drawnow;
         end
     end
-
 
     function predictedData = loadPredictedData(app, sensorName, modelType)
         try
@@ -707,7 +705,7 @@ methods (Access = public)
     function plotExampleCleanedSapflow(app)
         % Skip cleaning and saving if SapFluxNetDataModeCheckBox is checked
         if app.SapFluxNetDataModeCheckBox.Value
-            disp('SapFluxNet Data Mode is active. Skipping data cleaning and saving.');
+            % disp('SapFluxNet Data Mode is active. Skipping data cleaning and saving.');
             return;
         end
         % Function to detect and remove outlier windows and windows with high or low variation
@@ -745,7 +743,7 @@ methods (Access = public)
         
             % Identify outliers based on window means
             outlierMask(windowMeans < Q1 - thresholdMultiplier * IQR | windowMeans > Q3 + thresholdMultiplier * IQR) = true;
-            disp(sum(outlierMask));
+            % disp(sum(outlierMask));
             % Identify high variation windows
             highVariationMask(windowStds > variationThresholdHigh) = true;
         
@@ -1207,7 +1205,6 @@ methods (Access = public)
             rethrow(ME);
         end
     end
-
 
     % Function to clean and train sapflow model
     function cleanAndTrainSapflowModel(app)
@@ -1740,8 +1737,6 @@ methods (Access = public)
         end
     end
 
-
-
     % Function to perform one-hot encoding of hour
     function hourOneHot = oneHotEncodeHour(~,hourColumn)
         % Initialize the one-hot matrix with zeros
@@ -1876,19 +1871,16 @@ methods (Access = public)
         end
     end
 
-
     function svrModel = trainSVRModel(app)
         % X: feature matrix, y: target variable
         svrModel = fitrsvm(app.XTrain, app.YTrain, 'KernelFunction', 'gaussian', 'Standardize', true);
     end
-
 
     function gprModel = trainGPRModel(app)
         % X: feature matrix, y: target variable
         gprModel = fitrgp(app.XTrain, app.YTrain, 'KernelFunction', 'squaredexponential');
     end
 
-    
     function kernelModel = trainKernelModel(app)
         
         % Define the kernel function (you can choose from several options like 'squaredexponential', 'matern52', etc.)
@@ -1901,7 +1893,6 @@ methods (Access = public)
         % The 'FitMethod' can be adjusted to use 'exact' or 'sd' based on your preference for computation
         
     end
-
 
     % Function to train GRU model
     function net = trainGRUModel(app)
@@ -2027,7 +2018,6 @@ methods (Access = public)
         net = trainNetwork(app.XTrain', app.YTrain', layers, options);
     end
 
-
     function model = trainRandomForestModel(app)
     
         % Train Random Forest Model
@@ -2035,7 +2025,6 @@ methods (Access = public)
     
         disp('Random Forest model trained successfully.');
     end
-    
     
     % Function to validate the model
     function validateModel(app, modelType, model, sensorName)
@@ -2267,7 +2256,6 @@ methods (Access = public)
         end
     end
 
-
     % Function to remove short runs of consistent data points
     function cleanedData = removeShortRuns(~, sensorData, minRunLength)
         % Find all runs of consecutive non-NaN data
@@ -2287,7 +2275,6 @@ methods (Access = public)
         end
     end
   
-
     function [predictions, predictingVariableNames, validIdx] = makePredictions(app, modelType, sensorName, scaleData)
         try
             % Start timing
@@ -2406,7 +2393,6 @@ methods (Access = public)
             rethrow(ME);
         end
     end
-
 
     function savePredictedData(app, predictions, predictingVariableNames, validIdx, sensorName, modelType)
         try
@@ -2644,7 +2630,6 @@ end
             hold(app.UIAxes6_6, 'off');
         end
 
-
         function exportKValuesAfterGapFill(app)
             try
                 % Step 1: Check if a valid output path is defined
@@ -2696,8 +2681,7 @@ end
                 % Handle errors and display them in a message box
                 errordlg(ME.message, 'Error');
                 logMessage(app, sprintf('An error occurred: %s', ME.message));
-            end
-            
+            end         
             app.endWait();
         end
         
@@ -2741,7 +2725,6 @@ end
             hold(app.UIAxes6_5, 'off');
         end
 
-        
         % Helper function: Export combined data to CSV
         function exportKCombinedDataToCSV(app, combinedData, outputFilename)
             try
@@ -3321,8 +3304,7 @@ end
             svp = 0.6108 .* exp((17.27 .* temperature) ./ (temperature + 237.3)); % Saturation Vapour Pressure
             avp = (humidity ./ 100) .* svp; % Actual Vapour Pressure
             vpd = svp - avp; % Vapour Pressure Deficit
-        end
-        
+        end     
     end
     
 %% Preview and edit data %%
@@ -3578,8 +3560,6 @@ end
             % Determine if there are any edits in DeletionHistory or SubtractionHistory
             isEdited = ~isempty(app.DeletionHistory) || ~isempty(app.SubtractionHistory);
         end
-
-       
     end
 
     %% Dara Previewing %%
@@ -3595,83 +3575,95 @@ end
 
         function previewData(app)
             try
+                % Initialize progress bar
+                h = waitbar(0, 'Importing data, please wait...', 'Name', 'Data Import Progress');
+                
+                % Step 1: Check file extension
                 [~, ~, ext] = fileparts(app.DataFilePath);
                 if ~ismember(ext, {'.csv', '.xlsx'})
                     error('Unsupported file type');
                 end
-        
+                waitbar(0.1, h, 'Checking file type...');
+                
+                % Step 2: Detect import options and read the table
                 opts = detectImportOptions(app.DataFilePath, 'VariableNamingRule', 'preserve');
                 data = readtable(app.DataFilePath, opts);
-        
-                % Identify columns
+                waitbar(0.2, h, 'Reading data file...');
+                
+                % Step 3: Identify columns
                 app.identifyColumns(data);
-        
-                % Filter data
+                waitbar(0.3, h, 'Identifying columns...');
+                
+                % Step 4: Filter data
                 filteredData = app.filterData(data);
                 disp(['Size of filtered data: ', num2str(size(filteredData))]);
-        
-                % Create a temporary copy of filtered data for preview and editing
+                waitbar(0.4, h, 'Filtering data...');
+                
+                % Step 5: Create a temporary copy of filtered data for preview and editing
                 tempFilteredData = filteredData;
-        
-                % Update UITable4 with the filtered data
+                
+                % Step 6: Update UITable4
                 app.UITable4.Data = tempFilteredData;
                 app.UITable4.ColumnName = tempFilteredData.Properties.VariableNames;
-        
-                % Extract necessary columns for further processing
+                waitbar(0.5, h, 'Updating UI Table...');
+                
+                % Step 7: Extract necessary columns
                 if ismember('TIMESTAMP', tempFilteredData.Properties.VariableNames)
                     app.timestamp = datetime(tempFilteredData.TIMESTAMP, 'InputFormat', 'M/d/yyyy H:mm');
                 else
                     error('TIMESTAMP column is missing.');
                 end
-        
+                waitbar(0.6, h, 'Extracting timestamps...');
+                
                 app.setDOY(data);
-
-                if iscell(tempFilteredData.AirTC_Avg)
-                    app.temperature = str2double(tempFilteredData.AirTC_Avg);
-                else
-                    app.temperature = tempFilteredData.AirTC_Avg;
-                end
                 
-                if iscell(tempFilteredData.RH)
-                    app.humidity = str2double(tempFilteredData.RH);
-                else
-                    app.humidity = tempFilteredData.RH;
-                end
+                % Step 8: Convert temperature, humidity, and PAR data
+                app.temperature = convertToNumeric1(app,tempFilteredData.AirTC_Avg);
+                app.humidity = convertToNumeric1(app,tempFilteredData.RH);
+                app.par = convertToNumeric1(app,tempFilteredData.PAR_Den_Avg);
+                waitbar(0.7, h, 'Converting numeric data...');
                 
-                if iscell(tempFilteredData.PAR_Den_Avg)
-                    app.par = str2double(tempFilteredData.PAR_Den_Avg);
-                else
-                    app.par = tempFilteredData.PAR_Den_Avg;
-                end
-                        
-                                % Calculate VPD
+                % Step 9: Validate VPD calculation inputs
                 if any(~isnumeric(app.temperature)) || any(~isnumeric(app.humidity))
                     error('Temperature or humidity contains non-numeric values.');
                 end
-
-                % Initialize app.Config as a structure
-                app.Config = struct();
                 
-                % Define configuration parameters
+                % Step 10: Initialize Configuration
+                app.Config = struct();
                 app.Config.Timestep = app.TimeStepIncrementsminEditField.Value;
                 app.Config.parThresh = app.PARThresholdEditField.Value; 
                 app.Config.vpdThresh = app.VPDThresholdEditField.Value; 
-                app.Config.vpdTime = app.VPDTimehEditField.Value; 
+                app.Config.vpdTime = app.VPDTimehEditField.Value;
+                waitbar(0.8, h, 'Configuring parameters...');
                 
-                % Populate dropdown menus with data columns from UITable4
+                % Step 11: Populate dropdowns and plot data
                 app.populateDropdowns();
-                
-                % Plot initial data
                 app.plotData();
+                waitbar(1.0, h, 'Finalizing import...');
+                
+                % Close progress bar after successful completion
+                close(h);
                 
             catch ME
+                % Close progress bar if an error occurs
+                if exist('h', 'var') && isvalid(h)
+                    close(h);
+                end
+                
                 % Handle error if the file cannot be read as a table
                 msgbox(sprintf('Error reading the data file: %s', ME.message), 'Error', 'error');
                 app.TextArea2.Value = [app.TextArea2.Value; {['Error reading the data file: ', ME.message]}];
                 scroll(app.TextArea2, "bottom");
             end
         end
-
+        
+        function numData = convertToNumeric1(~,data)
+            if iscell(data)
+                numData = str2double(data);
+            else
+                numData = data;
+            end
+        end
 
         function identifyColumns(app, data)
             colNames = data.Properties.VariableNames;
@@ -4479,7 +4471,6 @@ end
             scroll(app.OutputTextArea, "bottom");
         
         end
-
     end
 
 %% Project Page configuration %%
@@ -4571,7 +4562,6 @@ end
             app.OutputTextArea.Value = [app.OutputTextArea.Value; {['Project loaded from: ', app.ProjectFilePath]}];
             scroll(app.OutputTextArea, "bottom");
         end
-
     end
       
 
@@ -4644,7 +4634,7 @@ end
             % Add the panel to the dialog
             dialog.getContentPane().add(panel);
             % Set the dialog size
-            dialog.setSize(500, 300); % Change the size as needed
+            dialog.setSize(520, 340); % Change the size as needed
             % Center the dialog on the screen
             dialog.setLocationRelativeTo([]);
             % Set the icon (if needed)
@@ -5063,58 +5053,55 @@ end
 
         % Button pushed function: SaveDataAsButton
         function SaveDataAsButtonPushed2(app, event)
-
-    try
-        % Check if the data in the table is a valid table
-        if ~istable(app.UITable4.Data)
-            % Convert the data to a table if it's not already a table
-            dataArray = app.UITable4.Data;
-            if isempty(dataArray)
-                % Notify the user if the table is empty
+            try
+                % Check if the data in the table is a valid table
+                if ~istable(app.UITable4.Data)
+                    % Convert the data to a table if it's not already a table
+                    dataArray = app.UITable4.Data;
+                    if isempty(dataArray)
+                        % Notify the user if the table is empty
+                        uialert(app.SapFlowerUIFigure, ...
+                            'Table is empty. Cannot save.', ...
+                            'Save Error', ...
+                            'Icon', 'info');
+                        return;
+                    end
+                    % Assuming default column names as 'Column1', 'Column2', etc.
+                    dataTable = array2table(dataArray, 'VariableNames', {'Column1', 'Column2', 'Column3'});
+                else
+                    % Use the existing table directly
+                    dataTable = app.UITable4.Data;
+                end
+                
+                % Prompt the user to select a file location and name to save as CSV
+                [fileName, filePath] = uiputfile('*.csv', 'Save Table as New CSV');
+                
+                % Check if the user canceled the operation
+                if isequal(fileName, 0) || isequal(filePath, 0)
+                    % User canceled the save operation
+                    msgbox('Save operation canceled.', 'Canceled');
+                    return;
+                end
+                
+                % Construct the full file path
+                fullFileName = fullfile(filePath, fileName);
+                
+                % Write the table to a CSV file
+                writetable(dataTable, fullFileName);
+                
+                % Notify the user of a successful save
                 uialert(app.SapFlowerUIFigure, ...
-                    'Table is empty. Cannot save.', ...
-                    'Save Error', ...
+                    ['Table successfully saved as: ', fullFileName], ...
+                    'Save Successful', ...
                     'Icon', 'info');
-                return;
+            catch saveError
+                % Handle any errors during the save process
+                uialert(app.SapFlowerUIFigure, ...
+                    'An error occurred while saving the file.', ...
+                    'Save Error', ...
+                    'Icon', 'error');
+                disp(saveError.message);
             end
-            % Assuming default column names as 'Column1', 'Column2', etc.
-            dataTable = array2table(dataArray, 'VariableNames', {'Column1', 'Column2', 'Column3'});
-        else
-            % Use the existing table directly
-            dataTable = app.UITable4.Data;
-        end
-        
-        % Prompt the user to select a file location and name to save as CSV
-        [fileName, filePath] = uiputfile('*.csv', 'Save Table as New CSV');
-        
-        % Check if the user canceled the operation
-        if isequal(fileName, 0) || isequal(filePath, 0)
-            % User canceled the save operation
-            msgbox('Save operation canceled.', 'Canceled');
-            return;
-        end
-        
-        % Construct the full file path
-        fullFileName = fullfile(filePath, fileName);
-        
-        % Write the table to a CSV file
-        writetable(dataTable, fullFileName);
-        
-        % Notify the user of a successful save
-        uialert(app.SapFlowerUIFigure, ...
-            ['Table successfully saved as: ', fullFileName], ...
-            'Save Successful', ...
-            'Icon', 'info');
-    catch saveError
-        % Handle any errors during the save process
-        uialert(app.SapFlowerUIFigure, ...
-            'An error occurred while saving the file.', ...
-            'Save Error', ...
-            'Icon', 'error');
-        disp(saveError.message);
-    end
-
-
         end
 
         % Button pushed function: SaveDataButton
@@ -5162,7 +5149,6 @@ end
                 disp(errorMessage);
                 msgbox(errorMessage, 'Error', 'error');
             end
-
         end
 
         % Button pushed function: NextSensorButton
@@ -5200,7 +5186,6 @@ end
                 disp(errorMessage);
                 msgbox(errorMessage, 'Error', 'error');
             end
-
         end
 
         % Button pushed function: autoClean
@@ -5323,7 +5308,6 @@ end
                 scroll(app.TextArea_2, "bottom");
                 drawnow;
             end
-
         end
 
         % Button pushed function: PredictedDataButton
@@ -5458,7 +5442,6 @@ end
                 scroll(app.TextArea_2, "bottom");
                 drawnow;
             end
-
         end
 
         % Button pushed function: GapFillButton
@@ -5579,7 +5562,6 @@ end
                 errordlg(sprintf('An error occurred: %s', ME.message), 'Error');
                 disp(['Error in GapFillButtonPushed: ', ME.message]);
             end
-
         end
 
         % Button pushed function: ExportKvaluesButton
@@ -5594,7 +5576,7 @@ end
 
         % Menu selected function: CreateNewMenu
         function CreateNewMenuSelected(app, event)
-                        % Check if ProjectName is defined
+            % Check if ProjectName is defined
             if isempty(app.ProjectNameEditField.Value)
                 msgbox('Please provide a project name.', 'Error', 'error');
                 app.OutputTextArea.Value = [app.OutputTextArea.Value; {'Project name is not defined.'}];
@@ -5696,7 +5678,6 @@ end
 
         % Menu selected function: ExportKMenu
         function ExportKMenuSelected(app, event)
-
             % Check if there is a plot on app.UIAxes6_4
             if isempty(app.UIAxes6_4.Children)
                 % No plot exists, do one thing
@@ -5708,7 +5689,6 @@ end
                 msgbox('Exporting gap-filled K...', 'Gap-filling status');
                 exportFValuesAfterGapFill(app);
             end
-
         end
 
         % Menu selected function: ExitMenu
@@ -5816,7 +5796,7 @@ end
             
             % Create the main dialog
             dialog = javaObjectEDT('javax.swing.JDialog');
-            dialog.setTitle('About SapFlower 1.0');
+            dialog.setTitle('Contact the author');
             dialog.setModal(true);
             % Create a panel to hold the text area
             panel = javaObjectEDT('javax.swing.JPanel');
@@ -5835,7 +5815,7 @@ end
             % Add the panel to the dialog
             dialog.getContentPane().add(panel);
             % Set the dialog size
-            dialog.setSize(500, 300); % Change the size as needed
+            dialog.setSize(520, 250); % Change the size as needed
             % Center the dialog on the screen
             dialog.setLocationRelativeTo([]);
             % Set the icon (if needed)
@@ -7752,24 +7732,24 @@ end
             app.GridLayout13.RowSpacing = 3.5;
             app.GridLayout13.Padding = [1.5454531582919 3.5 1.5454531582919 3.5];
 
-            % Create UIAxes5
-            app.UIAxes5 = uiaxes(app.GridLayout13);
-            xlabel(app.UIAxes5, 'Time')
-            ylabel(app.UIAxes5, 'K detail')
-            zlabel(app.UIAxes5, 'Z')
-            app.UIAxes5.TickLength = [0.006 0.025];
-            app.UIAxes5.GridLineStyle = '-.';
-            app.UIAxes5.XColor = [0 0 0];
-            app.UIAxes5.XTick = [0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1];
-            app.UIAxes5.YColor = [0 0 0];
-            app.UIAxes5.YTick = [0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1];
-            app.UIAxes5.ZColor = [0 0 0];
-            app.UIAxes5.LineWidth = 0.25;
-            app.UIAxes5.Box = 'on';
-            app.UIAxes5.XGrid = 'on';
-            app.UIAxes5.YGrid = 'on';
-            app.UIAxes5.Layout.Row = 3;
-            app.UIAxes5.Layout.Column = [9 21];
+            % Create UIAxes3
+            app.UIAxes3 = uiaxes(app.GridLayout13);
+            xlabel(app.UIAxes3, 'Time')
+            ylabel(app.UIAxes3, 'dV Overview')
+            zlabel(app.UIAxes3, 'Z')
+            app.UIAxes3.TickLength = [0.006 0.025];
+            app.UIAxes3.GridLineWidth = 0.25;
+            app.UIAxes3.MinorGridLineWidth = 0.25;
+            app.UIAxes3.GridLineStyle = '-.';
+            app.UIAxes3.XColor = [0 0 0];
+            app.UIAxes3.YColor = [0 0 0];
+            app.UIAxes3.ZColor = [0 0 0];
+            app.UIAxes3.LineWidth = 0.25;
+            app.UIAxes3.Box = 'on';
+            app.UIAxes3.XGrid = 'on';
+            app.UIAxes3.YGrid = 'on';
+            app.UIAxes3.Layout.Row = 3;
+            app.UIAxes3.Layout.Column = [1 8];
 
             % Create UIAxes4
             app.UIAxes4 = uiaxes(app.GridLayout13);
@@ -7791,24 +7771,23 @@ end
             app.UIAxes4.Layout.Column = [1 21];
             app.UIAxes4.PickableParts = 'all';
 
-            % Create UIAxes3
-            app.UIAxes3 = uiaxes(app.GridLayout13);
-            xlabel(app.UIAxes3, 'Time')
-            ylabel(app.UIAxes3, 'dV Overview')
-            zlabel(app.UIAxes3, 'Z')
-            app.UIAxes3.TickLength = [0.006 0.025];
-            app.UIAxes3.GridLineWidth = 0.25;
-            app.UIAxes3.MinorGridLineWidth = 0.25;
-            app.UIAxes3.GridLineStyle = '-.';
-            app.UIAxes3.XColor = [0 0 0];
-            app.UIAxes3.YColor = [0 0 0];
-            app.UIAxes3.ZColor = [0 0 0];
-            app.UIAxes3.LineWidth = 0.25;
-            app.UIAxes3.Box = 'on';
-            app.UIAxes3.XGrid = 'on';
-            app.UIAxes3.YGrid = 'on';
-            app.UIAxes3.Layout.Row = 3;
-            app.UIAxes3.Layout.Column = [1 8];
+            % Create UIAxes5
+            app.UIAxes5 = uiaxes(app.GridLayout13);
+            xlabel(app.UIAxes5, 'Time')
+            ylabel(app.UIAxes5, 'K detail')
+            zlabel(app.UIAxes5, 'Z')
+            app.UIAxes5.TickLength = [0.006 0.025];
+            app.UIAxes5.GridLineStyle = '-.';
+            app.UIAxes5.XColor = [0 0 0];
+            app.UIAxes5.XTick = [0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1];
+            app.UIAxes5.YColor = [0 0 0];
+            app.UIAxes5.ZColor = [0 0 0];
+            app.UIAxes5.LineWidth = 0.25;
+            app.UIAxes5.Box = 'on';
+            app.UIAxes5.XGrid = 'on';
+            app.UIAxes5.YGrid = 'on';
+            app.UIAxes5.Layout.Row = 3;
+            app.UIAxes5.Layout.Column = [9 21];
 
             % Create DeletedTdataButton
             app.DeletedTdataButton = uibutton(app.GridLayout13, 'push');
@@ -8581,15 +8560,15 @@ end
             app.GridLayout20.Padding = [1.42857142857143 5 1.42857142857143 5];
             app.GridLayout20.BackgroundColor = [0.94 0.94 0.94];
 
-            % Create UIAxes8
-            app.UIAxes8 = uiaxes(app.GridLayout20);
-            title(app.UIAxes8, 'Title')
-            xlabel(app.UIAxes8, 'X')
-            ylabel(app.UIAxes8, 'Y')
-            zlabel(app.UIAxes8, 'Z')
-            app.UIAxes8.Box = 'on';
-            app.UIAxes8.Layout.Row = 1;
-            app.UIAxes8.Layout.Column = [2 13];
+            % Create UIAxes10
+            app.UIAxes10 = uiaxes(app.GridLayout20);
+            title(app.UIAxes10, 'Title')
+            xlabel(app.UIAxes10, 'X')
+            ylabel(app.UIAxes10, 'Y')
+            zlabel(app.UIAxes10, 'Z')
+            app.UIAxes10.Box = 'on';
+            app.UIAxes10.Layout.Row = 2;
+            app.UIAxes10.Layout.Column = [9 13];
 
             % Create UIAxes9
             app.UIAxes9 = uiaxes(app.GridLayout20);
@@ -8601,15 +8580,15 @@ end
             app.UIAxes9.Layout.Row = 2;
             app.UIAxes9.Layout.Column = [2 8];
 
-            % Create UIAxes10
-            app.UIAxes10 = uiaxes(app.GridLayout20);
-            title(app.UIAxes10, 'Title')
-            xlabel(app.UIAxes10, 'X')
-            ylabel(app.UIAxes10, 'Y')
-            zlabel(app.UIAxes10, 'Z')
-            app.UIAxes10.Box = 'on';
-            app.UIAxes10.Layout.Row = 2;
-            app.UIAxes10.Layout.Column = [9 13];
+            % Create UIAxes8
+            app.UIAxes8 = uiaxes(app.GridLayout20);
+            title(app.UIAxes8, 'Title')
+            xlabel(app.UIAxes8, 'X')
+            ylabel(app.UIAxes8, 'Y')
+            zlabel(app.UIAxes8, 'Z')
+            app.UIAxes8.Box = 'on';
+            app.UIAxes8.Layout.Row = 1;
+            app.UIAxes8.Layout.Column = [2 13];
 
             % Create UITable6
             app.UITable6 = uitable(app.GridLayout20);
