@@ -1,6 +1,6 @@
 {
-    "version": "1.0.2.1",
-    "release_date": "2025-02-09",
-    "changelog": "Bugs fixed for SAPFLUXNET data and Sapwood Area Analysis",
+    "version": "1.0.2.2",
+    "release_date": "2025-03-06",
+    "changelog": "Added AIC and BIC for model evaludation",
     "download_url": "https://doi.org/10.5281/zenodo.13665919"
 }
