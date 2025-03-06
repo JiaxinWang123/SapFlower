@@ -9,8 +9,7 @@ Video Tutorial [here](https://drive.google.com/file/d/1cskIYdHHHBYsw1U-L66W-yFqg
 
 Please note that functions for data smoothing have been disabled and will be made available soon.
 
-![Screenshot 2025-01-18 102144](https://github.com/user-attachments/assets/5b41dce4-5fe1-4095-b942-3cd15d30c804)
-
+![Screenshot 2025-03-06 114150](https://github.com/user-attachments/assets/e17a6bb9-6923-44e6-8aa8-6814f79899d0)
 
 ![Screenshot 2025-01-17 213518](https://github.com/user-attachments/assets/cea90caf-fd07-468b-bb25-185ed61754ba)
 
