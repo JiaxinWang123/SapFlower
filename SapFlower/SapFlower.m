@@ -353,7 +353,7 @@ methods (Access = private)
             downloadUrl = parsedData.download_url;
             
             % Current version of the app
-            currentVersion = "1.0.2.1";  % Update this with your app's current version
+            currentVersion = "1.0.2.2";  % Update this with your app's current version
             % disp("Current Version:");
             % disp(currentVersion);
             % disp("Latest Version:");
@@ -2046,22 +2046,19 @@ methods (Access = public)
                 case 'GRU'
                     predictions = predict(model, app.XValidation');
                 case 'Random Forest'
-                    predictions = predict(model, app.XValidation);  % Random Forest does not need transposing
+                    predictions = predict(model, app.XValidation);  
                 case {'Simple Linear Model', 'Multiple Linear Model'}
                     predictions = predict(model, app.XValidation);
                 case {'ARX', 'ARMAX'}
                     % Create an iddata object for validation
                     valData = iddata(app.YValidation, app.XValidation);
-                    predictions = predict(model, valData, 1);  % 1-step ahead prediction
-                    predictions = predictions.OutputData;      % Extract the output data
+                    predictions = predict(model, valData, 1);
+                    predictions = predictions.OutputData;
                 case 'Support Vector Regression'
-                    % SVR model prediction
                     predictions = predict(model, app.XValidation);
                 case 'Gaussian Process Regression'
-                    % GPR model prediction
                     predictions = predict(model, app.XValidation);
                 case 'Kernel Regression'
-                    % KER model prediction
                     predictions = predict(model, app.XValidation);
                 otherwise
                     error('Unsupported model type.');
@@ -2071,8 +2068,8 @@ methods (Access = public)
             predictions(predictions < 0) = 0;
     
             % Reshape YValidation and predictions to ensure they are vectors
-            app.YValidation = app.YValidation(:);  % Convert to column vector if not already
-            predictions = predictions(:);          % Convert to column vector if not already
+            app.YValidation = app.YValidation(:);
+            predictions = predictions(:);
     
             % Ensure both YValidation and predictions are the same size
             if length(app.YValidation) ~= length(predictions)
@@ -2083,86 +2080,99 @@ methods (Access = public)
             predictionError = app.YValidation - predictions;
     
             % Calculate summary statistics
-            mae = mean(abs(predictionError));  % Mean Absolute Error (scalar)
-            rmse = sqrt(mean(predictionError.^2));  % Root Mean Square Error (scalar)
+            mae = mean(abs(predictionError));  
+            rmse = sqrt(mean(predictionError.^2));  
     
-            % Append the new MAE and RMSE to the existing text in TextArea
-            summaryText = sprintf('Sensor %s - MAE: %.4f, RMSE: %.4f', sensorName, mae, rmse);
-            if isempty(app.TextArea.Value)
-                app.TextArea.Value = {summaryText};  % First entry
+            % Determine the number of model parameters (k)
+            if isa(model, 'LinearModel')
+                k = length(model.Coefficients.Estimate);
+            elseif isa(model, 'classreg.learning.regr.RegressionBaggedEnsemble')
+                k = model.NumTrained;
+            elseif isa(model, 'RegressionGP') || isa(model, 'RegressionSVM')
+                k = size(app.XValidation, 2);
+            elseif contains(modelType, 'LSTM') || contains(modelType, 'GRU') || contains(modelType, 'BiLSTM')
+                try
+                    k = numel(model.Learnables);
+                catch
+                    k = 10; 
+                end
             else
-                app.TextArea.Value = [app.TextArea.Value; {summaryText}];  % Append new summary
+                k = 5;  
+            end
+    
+            % Number of observations
+            n = length(app.YValidation);
+    
+            % Log-likelihood approximation
+            logLikelihood = -0.5 * n * log(mean(predictionError.^2)); 
+    
+            % Calculate AIC and BIC
+            aic = 2 * k - 2 * logLikelihood; 
+            bic = k * log(n) - 2 * logLikelihood; 
+    
+            % Append summary statistics to TextArea
+            summaryText = sprintf('Sensor %s - MAE: %.4f, RMSE: %.4f, AIC: %.2f, BIC: %.2f', sensorName, mae, rmse, aic, bic);
+            if isempty(app.TextArea.Value)
+                app.TextArea.Value = {summaryText};
+            else
+                app.TextArea.Value = [app.TextArea.Value; {summaryText}];
             end
             scroll(app.TextArea, 'bottom');
-            drawnow; % Ensure the TextArea updates immediately
+            drawnow; 
     
-            % Plot true vs. predicted over time
-            % Custom colors for true and predicted data
-            trueLineColor = [0, 0.45, 0.74];    % Dark blue for true data
-            predictedLineColor = [0.85, 0.32, 0.1]; % Red for predicted data
-
-            % Updated code to check the checkbox state before plotting
+            % Check if plotting is enabled
             if app.ShowplotsaftertrainingCheckBox.Value
-                % Proceed with plotting if the checkbox is checked
                 app.TextArea.Value = [app.TextArea.Value; {'Plotting results after training...'}];
                 scroll(app.TextArea, 'bottom');
                 drawnow;
-            
+    
+                % Custom colors for plots
+                trueLineColor = [0, 0.45, 0.74];
+                predictedLineColor = [0.85, 0.32, 0.1];
+    
+                % Time-series plot
                 figure;
-                plot(app.TimestampsValidation, app.YValidation, ...
-                    'Color', trueLineColor, 'LineWidth', 1.5, 'DisplayName', 'True Data'); % True data with custom color
+                plot(app.TimestampsValidation, app.YValidation, 'Color', trueLineColor, 'LineWidth', 1.5, 'DisplayName', 'True Data');
                 hold on;
-                plot(app.TimestampsValidation, predictions, ...
-                    '-.', 'Color', predictedLineColor, 'LineWidth', 1, 'DisplayName', 'Predicted Data'); % Predicted data with custom dashed line
+                plot(app.TimestampsValidation, predictions, '-.', 'Color', predictedLineColor, 'LineWidth', 1, 'DisplayName', 'Predicted Data');
                 xlabel('Timestamp');
                 ylabel('Sapflow');
-                % Replace underscores with \_ to ensure correct display in the title
-                sensorNameFormatted = strrep(sensorName, '_', '\_');
-                title(sprintf('%s Model - Sensor %s\nTrue vs. Predicted Over Time', modelType, sensorNameFormatted));
+                title(sprintf('%s Model - Sensor %s\nTrue vs. Predicted Over Time', modelType, strrep(sensorName, '_', '\_')));
                 legend('show');
-                % Add MAE and RMSE to the bottom-right corner of the figure
                 text(max(app.TimestampsValidation), min(app.YValidation), ...
-                    sprintf('MAE: %.4f\nRMSE: %.4f', mae, rmse), ...
+                    sprintf('MAE: %.4f\nRMSE: %.4f\nAIC: %.2f\nBIC: %.2f', mae, rmse, aic, bic), ...
                     'HorizontalAlignment', 'right', 'VerticalAlignment', 'bottom', ...
                     'BackgroundColor', 'white', 'EdgeColor', 'black');
-            
                 hold off;
-            
-                % Define custom colors
-                scatterColor = [0.1, 0.5, 0.8]; % Light blue for scatter points
-                lineColor = [0.9, 0.3, 0.2];    % Orange-red for the 1:1 line
-            
-                % Scatter plot of true vs. predicted
+    
+                % Scatter plot
+                scatterColor = [0.1, 0.5, 0.8];
+                lineColor = [0.9, 0.3, 0.2];
+    
                 figure;
-                scatter(app.YValidation, predictions, 36, scatterColor, 'o');  % Blue circles
+                scatter(app.YValidation, predictions, 36, scatterColor, 'o');
                 hold on;
-                % Add 1:1 line
                 minVal = min(min(app.YValidation), min(predictions));
                 maxVal = max(max(app.YValidation), max(predictions));
-                plot([minVal, maxVal], [minVal, maxVal], '--', 'Color', lineColor, 'LineWidth', 1.5, 'DisplayName', '1:1 Line'); % Custom dashed line
-                hold off;
-            
+                plot([minVal, maxVal], [minVal, maxVal], '--', 'Color', lineColor, 'LineWidth', 1.5);
                 xlabel('True Sapflow');
                 ylabel('Predicted Sapflow');
-                % Replace underscores with \_ to ensure correct display in the title
-                sensorNameFormatted = strrep(sensorName, '_', '\_');
-                title(sprintf('%s Model - Sensor %s\nTrue vs. Predicted scatter', modelType, sensorNameFormatted));
+                title(sprintf('%s Model - Sensor %s\nTrue vs. Predicted Scatter', modelType, strrep(sensorName, '_', '\_')));
                 legend('show');
                 grid on;
-                % Add MAE and RMSE to the bottom-right corner of the scatter plot
                 text(max(app.YValidation), min(predictions), ...
-                    sprintf('MAE: %.4f\nRMSE: %.4f', mae, rmse), ...
+                    sprintf('MAE: %.4f\nRMSE: %.4f\nAIC: %.2f\nBIC: %.2f', mae, rmse, aic, bic), ...
                     'HorizontalAlignment', 'right', 'VerticalAlignment', 'bottom', ...
                     'BackgroundColor', 'white', 'EdgeColor', 'black');
+                hold off;
             else
-                % Skip plotting if the checkbox is not checked
                 app.TextArea.Value = [app.TextArea.Value; {'Skipping plots as "Show plots after training" is unchecked.'}];
                 scroll(app.TextArea, 'bottom');
                 drawnow;
             end
-
+    
         catch ME
-            % Handle any unexpected errors
+            % Handle errors
             app.TextArea.Value = [app.TextArea.Value; {sprintf('Error validating model for sensor %s: %s', sensorName, ME.message)}];
             scroll(app.TextArea, 'bottom');
             msgbox(sprintf('An error occurred while validating the model: %s', ME.message), 'Error', 'error');
