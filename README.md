@@ -1,7 +1,7 @@
 # SapFlower
 
 The standalone GUI App was written in Matlab, and it is now completed and available at [Zenodo](https://zenodo.org/doi/10.5281/zenodo.13665919) and [Figshare](https://doi.org/10.6084/m9.figshare.27015787). 
-## The latest version is available now.
+## The manuscript has been accepted for publication in New Phytologist (In press).
 
 There are might be some bugs and I am fixing them.
 
