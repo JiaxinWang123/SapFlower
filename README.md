@@ -6,7 +6,7 @@ When using SapFlower, we kindly request that you cite this articles, recognizing
 
 Citation:
 
-Wang, J., Renninger, H. J. (2025). SapFlower: An automated tool for sap flow data preprocessing, gap filling, and analysis using deep learning. New Phytologist, 70107. https://dx.doi.org/10.1111/nph.70107. 
+Wang, J., Renninger, H. J. (2025). SapFlower: An automated tool for sap flow data preprocessing, gap filling, and analysis using deep learning. *New Phytologist*, 70107. https://dx.doi.org/10.1111/nph.70107. 
 
 There are might be some bugs and I am fixing them.
 
