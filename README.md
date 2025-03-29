@@ -1,7 +1,12 @@
 # SapFlower
 
 The standalone GUI App was written in Matlab, and it is now completed and available at [Zenodo](https://zenodo.org/doi/10.5281/zenodo.13665919) and [Figshare](https://doi.org/10.6084/m9.figshare.27015787). 
-## The manuscript has been accepted for publication in New Phytologist (In press).
+
+When using SapFlower, we kindly request that you cite this articles, recognizing the hard work that went into collecting the data, developing the software, and the authors' willingness to make them publicly available.
+
+Citation:
+
+Wang, J., Renninger, H. J. (2025). SapFlower: An automated tool for sap flow data preprocessing, gap filling, and analysis using deep learning. New Phytologist, 70107. https://dx.doi.org/10.1111/nph.70107. 
 
 There are might be some bugs and I am fixing them.
 
