@@ -332,6 +332,18 @@ classdef SapFlower < matlab.apps.AppBase
 %% Version updates %%
 
 methods (Access = private)
+    function appendToPreprocessingLog(app, lines)
+        % Append a cell array of char vectors to the Data Preprocessing
+        % tab's text output (app.TextArea2) and scroll to bottom.
+        % Silently no-ops if the textarea hasn't been built yet.
+        if isempty(lines), return; end
+        if ~iscell(lines), lines = {lines}; end
+        if isempty(app.TextArea2) || ~isvalid(app.TextArea2), return; end
+        app.TextArea2.Value = [app.TextArea2.Value; lines(:)];
+        scroll(app.TextArea2, 'bottom');
+        drawnow;
+    end
+
     function checkForUpdates(app)
         % Define the URL where the JSON file is stored
         versionURL = "https://raw.githubusercontent.com/JiaxinWang123/SapFlower/main/SapFlower_version.json";
@@ -5775,11 +5787,13 @@ end
         % (Hata & Kumagai 2026, fluxfixer §2.1.5). Operates on the
         % currently active sensor's ΔT series via
         % SapflowProcessor.applyDriftDampingCorrection, which is undoable.
+        % Status, captured stdout, warnings and errors all stream to the
+        % Data Preprocessing tab's text output (app.TextArea2).
         function DriftDampingMenuSelected(app, event)
+            logLines = {};
             if isempty(app.sapflowProcessor)
-                uialert(app.SapFlowerUIFigure, ...
-                    'Open or create a project first.', ...
-                    'Drift/Damping Correction');
+                logLines{end+1} = '[Drift/Damping] Open or create a project first.';
+                app.appendToPreprocessingLog(logLines);
                 return
             end
 
@@ -5800,25 +5814,59 @@ end
                 case 'Detrend', chosenMode = 'detrend';
                 case 'Damping', chosenMode = 'damping';
                 case 'Both',    chosenMode = 'both';
-                otherwise,      return
+                otherwise
+                    logLines{end+1} = '[Drift/Damping] Cancelled by user.';
+                    app.appendToPreprocessingLog(logLines);
+                    return
             end
             app.Config.zsMode = chosenMode;  % remember user's choice for next time
 
+            logLines{end+1} = sprintf(...
+                '[Drift/Damping] Starting %s correction (window=%dd, ref=%dd)...', ...
+                chosenMode, win, ref);
+            app.appendToPreprocessingLog(logLines);   % flush header before work
+            logLines = {};
+
+            lastwarn('');                              % reset warning catcher
+            captured = '';
             try
-                app.sapflowProcessor.applyDriftDampingCorrection(chosenMode);
+                captured = evalc( ...
+                    'app.sapflowProcessor.applyDriftDampingCorrection(chosenMode);');
                 nC = sum(app.sapflowProcessor.ssDriftQC == 1);
                 nS = sum(app.sapflowProcessor.ssDriftQC == 2);
-                uialert(app.SapFlowerUIFigure, ...
-                    sprintf(['Done. %d samples corrected, %d skipped.\n\n' ...
-                             'Tip: baseline anchors were picked on the ' ...
-                             'pre-correction series. Re-run the baseline ' ...
-                             'step (Auto / Auto Nightly) before exporting K.'], ...
-                            nC, nS), ...
-                    'Drift/Damping Correction', 'Icon', 'success');
+
+                if ~isempty(strtrim(captured))
+                    capLines = strsplit(strtrim(captured), newline);
+                    for k = 1:numel(capLines)
+                        logLines{end+1} = sprintf('[Drift/Damping]   %s', capLines{k}); %#ok<AGROW>
+                    end
+                end
+
+                [wMsg, wId] = lastwarn;
+                if ~isempty(wMsg)
+                    logLines{end+1} = sprintf('[Drift/Damping] WARNING (%s): %s', ...
+                        wId, wMsg);
+                end
+
+                logLines{end+1} = sprintf( ...
+                    '[Drift/Damping] Done. %d samples corrected, %d skipped.', nC, nS);
+                logLines{end+1} = ['[Drift/Damping] Tip: re-run baseline picking ' ...
+                    '(Auto / Auto Nightly) before exporting K.'];
             catch ME
-                uialert(app.SapFlowerUIFigure, ME.message, ...
-                    'Drift/Damping Correction', 'Icon', 'error');
+                if ~isempty(strtrim(captured))
+                    capLines = strsplit(strtrim(captured), newline);
+                    for k = 1:numel(capLines)
+                        logLines{end+1} = sprintf('[Drift/Damping]   %s', capLines{k}); %#ok<AGROW>
+                    end
+                end
+                logLines{end+1} = sprintf('[Drift/Damping] ERROR: %s', ME.message);
+                if ~isempty(ME.stack)
+                    logLines{end+1} = sprintf('[Drift/Damping]   at %s (line %d)', ...
+                        ME.stack(1).name, ME.stack(1).line);
+                end
             end
+
+            app.appendToPreprocessingLog(logLines);
         end
 
         % Menu selected function: HomePageMenu
