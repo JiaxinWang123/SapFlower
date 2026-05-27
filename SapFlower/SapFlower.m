@@ -909,6 +909,65 @@ methods (Access = public)
         end
         plotData(app);
 
+        % --- Drift / signal-damping integration -----------------------------
+        % After outliers and short runs are removed, check whether the
+        % cleaned series still carries long-term drift or signal damping
+        % (Hata & Kumagai 2026, fluxfixer §2.1.5) and offer to correct it.
+        % Detection is silent when nothing is found, so this only nags the
+        % user when there is something to correct.
+        if ~isempty(app.sapflowProcessor)
+            installIdx = 1;
+            if isfield(app.Config, 'installIdx')
+                installIdx = app.Config.installIdx;
+            end
+            try
+                diag = detectDriftDamping( ...
+                    app.sapflowProcessor.ss, installIdx, ...
+                    app.sapflowProcessor.config);
+                app.appendToPreprocessingLog({ ...
+                    sprintf('[AutoClean→Drift] Detection: %s', diag.message), ...
+                    sprintf('[AutoClean→Drift] Recommendation: %s', diag.recommendation)});
+            catch MEdetect
+                app.appendToPreprocessingLog({sprintf( ...
+                    '[AutoClean→Drift] Detection failed: %s', MEdetect.message)});
+                return
+            end
+
+            if strcmpi(diag.recommendation, 'none')
+                app.appendToPreprocessingLog( ...
+                    {'[AutoClean→Drift] No drift/damping detected — skipping correction.'});
+                return
+            end
+
+            switch lower(diag.recommendation)
+                case 'detrend', recIdx = 1;
+                case 'damping', recIdx = 2;
+                case 'both',    recIdx = 3;
+                otherwise,      recIdx = 4;
+            end
+
+            promptMsg = sprintf([...
+                'Auto Clean finished. Detection on the cleaned series found:\n' ...
+                '   %s\n   Recommended: %s\n\n' ...
+                'Apply Z-score drift / signal-damping correction now?\n' ...
+                'Press Enter to accept the recommendation, pick another ' ...
+                'option to override, or Skip to leave the cleaned series as-is.'], ...
+                diag.message, diag.recommendation);
+
+            sel = uiconfirm(app.SapFlowerUIFigure, promptMsg, ...
+                'Drift/Damping Correction (Auto Clean)', ...
+                'Options', {'Detrend', 'Damping', 'Both', 'Skip'}, ...
+                'DefaultOption', recIdx, 'CancelOption', 4);
+
+            switch sel
+                case 'Detrend', app.applyDriftDampingWithMode('detrend');
+                case 'Damping', app.applyDriftDampingWithMode('damping');
+                case 'Both',    app.applyDriftDampingWithMode('both');
+                otherwise
+                    app.appendToPreprocessingLog( ...
+                        {'[AutoClean→Drift] Skipped by user.'});
+            end
+        end
     end
 
     function [cleanedData, inverseMask] = removeOutliersUsingNearestPoints(app, sensorData, numNeighbors)
