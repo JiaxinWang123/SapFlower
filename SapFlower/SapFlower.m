@@ -26,6 +26,7 @@ classdef SapFlower < matlab.apps.AppBase
         QuantileRegressionMenu_2        matlab.ui.container.Menu
         BayesianFilteringMenu_2         matlab.ui.container.Menu
         GapFillMenu                     matlab.ui.container.Menu
+        DriftDampingMenu                matlab.ui.container.Menu
         DeleteSelectedDataMenu          matlab.ui.container.Menu
         ReverseSelectedDataMenu         matlab.ui.container.Menu
         UndoMenu                        matlab.ui.container.Menu
@@ -5769,6 +5770,57 @@ end
             app.gapFillAndPlotData();
         end
 
+        % Menu selected function: DriftDampingMenu
+        % Z-score long-term drift / signal-damping correction
+        % (Hata & Kumagai 2026, fluxfixer §2.1.5). Operates on the
+        % currently active sensor's ΔT series via
+        % SapflowProcessor.applyDriftDampingCorrection, which is undoable.
+        function DriftDampingMenuSelected(app, event)
+            if isempty(app.sapflowProcessor)
+                uialert(app.SapFlowerUIFigure, ...
+                    'Open or create a project first.', ...
+                    'Drift/Damping Correction');
+                return
+            end
+
+            win = 15; ref = 15;
+            if isfield(app.Config, 'zsWindowDays'), win = app.Config.zsWindowDays; end
+            if isfield(app.Config, 'zsRefDays'),    ref = app.Config.zsRefDays;    end
+
+            sel = uiconfirm(app.SapFlowerUIFigure, ...
+                sprintf(['Apply Z-score drift / signal-damping correction ' ...
+                         '(Hata & Kumagai 2026)?\n\n' ...
+                         'Moving window = %d d, reference window = %d d ' ...
+                         'after each install.\n\n' ...
+                         'Choose what to correct:'], win, ref), ...
+                'Drift/Damping Correction', ...
+                'Options', {'Detrend', 'Damping', 'Both', 'Cancel'}, ...
+                'DefaultOption', 3, 'CancelOption', 4);
+            switch sel
+                case 'Detrend', app.Config.zsMode = 'detrend';
+                case 'Damping', app.Config.zsMode = 'damping';
+                case 'Both',    app.Config.zsMode = 'both';
+                otherwise,      return
+            end
+            app.sapflowProcessor.config = app.Config;  % propagate mode to processor
+
+            try
+                app.sapflowProcessor.applyDriftDampingCorrection();
+                nC = sum(app.sapflowProcessor.ssDriftQC == 1);
+                nS = sum(app.sapflowProcessor.ssDriftQC == 2);
+                uialert(app.SapFlowerUIFigure, ...
+                    sprintf(['Done. %d samples corrected, %d skipped.\n\n' ...
+                             'Tip: baseline anchors were picked on the ' ...
+                             'pre-correction series. Re-run the baseline ' ...
+                             'step (Auto / Auto Nightly) before exporting K.'], ...
+                            nC, nS), ...
+                    'Drift/Damping Correction', 'Icon', 'success');
+            catch ME
+                uialert(app.SapFlowerUIFigure, ME.message, ...
+                    'Drift/Damping Correction', 'Icon', 'error');
+            end
+        end
+
         % Menu selected function: HomePageMenu
         function HomePageMenuSelected(app, event)
             web('https://www.jiaxin-wang.com/', '-browser');
@@ -7391,6 +7443,12 @@ end
             app.GapFillMenu.MenuSelectedFcn = createCallbackFcn(app, @GapFillMenuSelected, true);
             app.GapFillMenu.Accelerator = 'G';
             app.GapFillMenu.Text = 'GapFill';
+
+            % Create DriftDampingMenu (Z-score drift/damping correction, Hata & Kumagai 2026)
+            app.DriftDampingMenu = uimenu(app.EditMenu);
+            app.DriftDampingMenu.MenuSelectedFcn = createCallbackFcn(app, @DriftDampingMenuSelected, true);
+            app.DriftDampingMenu.Accelerator = 'T';
+            app.DriftDampingMenu.Text = 'Drift/Damping Correction';
 
             % Create DeleteSelectedDataMenu
             app.DeleteSelectedDataMenu = uimenu(app.EditMenu);
