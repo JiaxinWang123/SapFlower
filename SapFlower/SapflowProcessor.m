@@ -130,18 +130,23 @@ classdef SapflowProcessor < handle
         end
 
 
-        function applyDriftDampingCorrection(o)
+        function applyDriftDampingCorrection(o, modeOverride)
             % Post-hoc Z-score long-term drift / signal-damping correction.
             % Reads parameters from o.config (see correctDriftDamping for the
             % full list). Pushes onto the undo stack so it can be reverted.
+            % Optional modeOverride: 'detrend' | 'damping' | 'both'.
+            cfg = o.config;
+            if nargin >= 2 && ~isempty(modeOverride)
+                cfg.zsMode = modeOverride;
+            end
             installIdx = 1;
-            if isfield(o.config, 'installIdx')
-                installIdx = o.config.installIdx;
+            if isfield(cfg, 'installIdx')
+                installIdx = cfg.installIdx;
             end
             o.pushCommand('drift/damping correction', ...
                 @o.undoDriftDampingCorrection, {o.ss, o.ssDriftQC});
             [o.ss, o.ssDriftQC] = correctDriftDamping( ...
-                o.ss, installIdx, o.config);
+                o.ss, installIdx, cfg);
             o.compute();
             o.sapflowCallback();
             o.baselineCallback();

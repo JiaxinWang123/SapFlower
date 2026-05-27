@@ -5797,15 +5797,15 @@ end
                 'Options', {'Detrend', 'Damping', 'Both', 'Cancel'}, ...
                 'DefaultOption', 3, 'CancelOption', 4);
             switch sel
-                case 'Detrend', app.Config.zsMode = 'detrend';
-                case 'Damping', app.Config.zsMode = 'damping';
-                case 'Both',    app.Config.zsMode = 'both';
+                case 'Detrend', chosenMode = 'detrend';
+                case 'Damping', chosenMode = 'damping';
+                case 'Both',    chosenMode = 'both';
                 otherwise,      return
             end
-            app.sapflowProcessor.config = app.Config;  % propagate mode to processor
+            app.Config.zsMode = chosenMode;  % remember user's choice for next time
 
             try
-                app.sapflowProcessor.applyDriftDampingCorrection();
+                app.sapflowProcessor.applyDriftDampingCorrection(chosenMode);
                 nC = sum(app.sapflowProcessor.ssDriftQC == 1);
                 nS = sum(app.sapflowProcessor.ssDriftQC == 2);
                 uialert(app.SapFlowerUIFigure, ...
