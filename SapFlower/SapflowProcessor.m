@@ -25,6 +25,7 @@ classdef SapflowProcessor < handle
         ssOrig
 
         ssDriftQC % QC flag from correctDriftDamping (1xN): 0=unchanged, 1=corrected, 2=skipped
+        ssDriftInfo % Diagnostics struct from the most recent correctDriftDamping call
 
         ssL % length of sapflow data (N)
 
@@ -144,8 +145,8 @@ classdef SapflowProcessor < handle
                 installIdx = cfg.installIdx;
             end
             o.pushCommand('drift/damping correction', ...
-                @o.undoDriftDampingCorrection, {o.ss, o.ssDriftQC});
-            [o.ss, o.ssDriftQC] = correctDriftDamping( ...
+                @o.undoDriftDampingCorrection, {o.ss, o.ssDriftQC, o.ssDriftInfo});
+            [o.ss, o.ssDriftQC, o.ssDriftInfo] = correctDriftDamping( ...
                 o.ss, installIdx, cfg);
             o.compute();
             o.sapflowCallback();
@@ -443,10 +444,13 @@ classdef SapflowProcessor < handle
 
 
         function undoDriftDampingCorrection(o, args)
-            % Restore the ΔT and drift/damping QC vectors saved prior to a
-            % call to applyDriftDampingCorrection().
-            o.ss        = args{1};
-            o.ssDriftQC = args{2};
+            % Restore the ΔT, QC and diagnostics saved prior to a call to
+            % applyDriftDampingCorrection().
+            o.ss          = args{1};
+            o.ssDriftQC   = args{2};
+            if numel(args) >= 3
+                o.ssDriftInfo = args{3};
+            end
             o.compute();
             o.sapflowCallback();
             o.baselineCallback();

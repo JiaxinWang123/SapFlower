@@ -1,7 +1,7 @@
-function [ssCorr, qc] = correctDriftDamping(ss, installIdx, cfg)
+function [ssCorr, qc, info] = correctDriftDamping(ss, installIdx, cfg)
 % correctDriftDamping  Long-term drift and signal-damping correction for TDM ΔT.
 %
-%   [ssCorr, qc] = correctDriftDamping(ss, installIdx, cfg)
+%   [ssCorr, qc, info] = correctDriftDamping(ss, installIdx, cfg)
 %
 %   Implements the moving-window Z-score / reference-window de-normalization
 %   described in Hata & Kumagai (2026), fluxfixer §2.1.5, with the reference
@@ -19,24 +19,44 @@ function [ssCorr, qc] = correctDriftDamping(ss, installIdx, cfg)
 %       'damping' : μ* = μ_mw(t),  σ* = σ_ref     restores original amplitude
 %       'both'    : μ* = μ_ref,    σ* = σ_ref     does both (default)
 %
+%   The reference window for a segment is the first `zsRefDays` of *valid*
+%   data after the install index (NaN samples are skipped), so the routine
+%   tolerates gaps at the start of the record. The validity threshold
+%   (cfg.zsMinRefSamples) is loose by default; set it higher to demand more
+%   evidence before applying a correction.
+%
 %   Inputs:
 %     ss          1xN ΔT time series (deg C); NaN allowed.
 %     installIdx  Indices marking sensor (re)installs. Pass [] for a single
-%                 install at sample 1; the function will sort and prepend 1
+%                 install at sample 1; the function sorts and prepends 1
 %                 if missing.
 %     cfg         Struct with fields:
-%                   .Timestep      minutes per sample (REQUIRED)
-%                   .zsWindowDays  moving window width, days (default 15)
-%                   .zsRefDays     reference window width, days (default 15)
-%                   .zsMode        'detrend'|'damping'|'both' (default 'both')
+%                   .Timestep        minutes per sample (REQUIRED)
+%                   .zsWindowDays    moving window width, days (default 15)
+%                   .zsRefDays       reference window width, days (default 15)
+%                   .zsMode          'detrend'|'damping'|'both' (default 'both')
+%                   .zsMinRefSamples min # of valid samples required in the
+%                                    reference window before a segment is
+%                                    accepted (default max(24, 0.05*refN);
+%                                    24 = 6 h at 15-min cadence)
 %
 %   Outputs:
-%     ssCorr  Corrected ΔT (same shape as ss). Where correction could not be
-%             computed (e.g. reference window had too few valid samples, or
-%             moving-window σ was undefined), ssCorr is left equal to ss.
+%     ssCorr  Corrected ΔT (same shape as ss). Samples that could not be
+%             corrected (e.g. σ_mw undefined in their window) are left equal
+%             to ss.
 %     qc      1xN flag: 0 = unchanged, 1 = drift/damping corrected,
 %                       2 = segment skipped (reference window unusable).
+%     info    Diagnostics struct:
+%               .nSegments      number of (re)install segments processed
+%               .corrected      count of samples with qc==1
+%               .skipped        count of samples with qc==2
+%               .pctValid       fraction of ss that is non-NaN
+%               .pctZValid      fraction of Z that is non-NaN (after movstd)
+%               .segments       struct array, one per segment, with fields
+%                               .a .b .nValid .refUsed .mu_ref .sd_ref
+%                               .nCorrected .status ('ok'|'few-valid'|'zero-sigma')
 
+    % --- defaults --------------------------------------------------------
     if ~isfield(cfg, 'Timestep')
         error('correctDriftDamping:NoTimestep', ...
               'cfg.Timestep (minutes/sample) is required.');
@@ -46,9 +66,7 @@ function [ssCorr, qc] = correctDriftDamping(ss, installIdx, cfg)
     if ~isfield(cfg, 'zsMode'),       cfg.zsMode       = 'both'; end
 
     N = numel(ss);
-    if isempty(installIdx)
-        installIdx = 1;
-    end
+    if isempty(installIdx), installIdx = 1; end
     installIdx = installIdx(installIdx >= 1 & installIdx <= N);
     installIdx = unique([1, installIdx(:)']);
 
@@ -56,6 +74,13 @@ function [ssCorr, qc] = correctDriftDamping(ss, installIdx, cfg)
     win  = max(3, round(cfg.zsWindowDays * spd));
     refN = max(3, round(cfg.zsRefDays    * spd));
 
+    if isfield(cfg, 'zsMinRefSamples') && ~isempty(cfg.zsMinRefSamples)
+        minRefSamples = cfg.zsMinRefSamples;
+    else
+        minRefSamples = max(24, round(0.05 * refN));
+    end
+
+    % --- moving-window Z-score ------------------------------------------
     mu_mw = movmean(ss, win, 'omitnan');
     sd_mw = movstd (ss, win, 'omitnan');
     sd_mw(sd_mw < eps) = NaN;
@@ -64,22 +89,46 @@ function [ssCorr, qc] = correctDriftDamping(ss, installIdx, cfg)
     ssCorr = ss;
     qc     = zeros(1, N);
 
+    info = struct();
+    info.nSegments = numel(installIdx);
+    info.pctValid  = mean(~isnan(ss));
+    info.pctZValid = mean(~isnan(z));
+    info.segments  = repmat(struct( ...
+        'a', 0, 'b', 0, 'nValid', 0, 'refUsed', 0, ...
+        'mu_ref', NaN, 'sd_ref', NaN, ...
+        'nCorrected', 0, 'status', ''), 1, info.nSegments);
+
     segStart = [installIdx, N + 1];
-    minRefSamples = max(2, round(0.1 * refN));
 
     for k = 1:numel(segStart) - 1
         a = segStart(k);
         b = segStart(k + 1) - 1;
-        rEnd = min(a + refN - 1, b);
-        refSeg = ss(a:rEnd);
-        if sum(~isnan(refSeg)) < minRefSamples
+        info.segments(k).a = a;
+        info.segments(k).b = b;
+
+        % Reference window = first refN VALID samples within the segment.
+        segValid = find(~isnan(ss(a:b))) + (a - 1);
+        nValid   = numel(segValid);
+        info.segments(k).nValid = nValid;
+
+        if nValid < minRefSamples
             qc(a:b) = 2;
+            info.segments(k).status = sprintf('few-valid (%d<%d)', ...
+                nValid, minRefSamples);
             continue
         end
-        mu_ref = mean(refSeg, 'omitnan');
-        sd_ref = std (refSeg, 'omitnan');
+
+        refIdx = segValid(1:min(refN, nValid));
+        refSeg = ss(refIdx);
+        info.segments(k).refUsed = numel(refIdx);
+        mu_ref = mean(refSeg);   % already non-NaN
+        sd_ref = std (refSeg);
+        info.segments(k).mu_ref = mu_ref;
+        info.segments(k).sd_ref = sd_ref;
+
         if ~(sd_ref > eps)
             qc(a:b) = 2;
+            info.segments(k).status = 'zero-sigma';
             continue
         end
 
@@ -96,14 +145,17 @@ function [ssCorr, qc] = correctDriftDamping(ss, installIdx, cfg)
                       'Unknown cfg.zsMode "%s".', cfg.zsMode);
         end
 
-        % Where the moving-window normalization failed (σ_mw undefined,
-        % yielding NaN in rec) but the raw sample was valid, fall back to
-        % the original so we don't fabricate gaps.
         keep = ~isnan(rec);
         ssCorr(seg(keep)) = rec(keep);
 
         changed = keep & ~isnan(ss(seg)) & ...
                   abs(ssCorr(seg) - ss(seg)) > 1e-9;
         qc(seg(changed)) = 1;
+
+        info.segments(k).nCorrected = sum(changed);
+        info.segments(k).status = 'ok';
     end
+
+    info.corrected = sum(qc == 1);
+    info.skipped   = sum(qc == 2);
 end
