@@ -24,6 +24,8 @@ classdef SapflowProcessor < handle
 
         ssOrig
 
+        ssDriftQC % QC flag from correctDriftDamping (1xN): 0=unchanged, 1=corrected, 2=skipped
+
         ssL % length of sapflow data (N)
 
         % These are generated automatically from the sapflow values:
@@ -79,6 +81,7 @@ classdef SapflowProcessor < handle
             o.ssOrig = oneByN(ss);
             o.ss = oneByN(ss);
             o.ssL = length(o.ss);
+            o.ssDriftQC = zeros(1, o.ssL);
             o.spbl = [1,o.ssL];
             o.zvbl = [1,o.ssL];
             o.lzvbl = [1,o.ssL];
@@ -113,6 +116,35 @@ classdef SapflowProcessor < handle
             % So, either this or setModifications() is called directly after
             % constructing the object.
             o.ss = cleanRawFluxData(o.ss, o.config);
+
+            % Optional Z-score long-term drift / signal-damping correction
+            % (Hata & Kumagai 2026, fluxfixer §2.1.5).
+            if isfield(o.config, 'zsEnable') && o.config.zsEnable
+                installIdx = 1;
+                if isfield(o.config, 'installIdx')
+                    installIdx = o.config.installIdx;
+                end
+                [o.ss, o.ssDriftQC] = correctDriftDamping( ...
+                    o.ss, installIdx, o.config);
+            end
+        end
+
+
+        function applyDriftDampingCorrection(o)
+            % Post-hoc Z-score long-term drift / signal-damping correction.
+            % Reads parameters from o.config (see correctDriftDamping for the
+            % full list). Pushes onto the undo stack so it can be reverted.
+            installIdx = 1;
+            if isfield(o.config, 'installIdx')
+                installIdx = o.config.installIdx;
+            end
+            o.pushCommand('drift/damping correction', ...
+                @o.undoDriftDampingCorrection, {o.ss, o.ssDriftQC});
+            [o.ss, o.ssDriftQC] = correctDriftDamping( ...
+                o.ss, installIdx, o.config);
+            o.compute();
+            o.sapflowCallback();
+            o.baselineCallback();
         end
 
 
@@ -131,6 +163,7 @@ classdef SapflowProcessor < handle
             s.spbl = o.spbl;
             s.zvbl = o.zvbl;
             s.lzvbl = o.lzvbl;
+            s.ssDriftQC = o.ssDriftQC;
             unchanged = (o.ss == o.ssOrig) | (isnan(o.ss) & isnan(o.ssOrig));
 
             [ts, te] = getRanges(~unchanged);
@@ -159,6 +192,9 @@ classdef SapflowProcessor < handle
             o.spbl = s.spbl;
             o.zvbl = s.zvbl;
             o.lzvbl = s.lzvbl;
+            if isfield(s, 'ssDriftQC')   % backward-compat with pre-feature projects
+                o.ssDriftQC = s.ssDriftQC;
+            end
             for seg = s.sapflow.cut
                 segv = seg{1};
                 o.ss(segv.start:segv.end) = NaN;
@@ -397,6 +433,17 @@ classdef SapflowProcessor < handle
             % the previous command.
             o.bla = args;
             o.compute();
+            o.baselineCallback();
+        end
+
+
+        function undoDriftDampingCorrection(o, args)
+            % Restore the ΔT and drift/damping QC vectors saved prior to a
+            % call to applyDriftDampingCorrection().
+            o.ss        = args{1};
+            o.ssDriftQC = args{2};
+            o.compute();
+            o.sapflowCallback();
             o.baselineCallback();
         end
 
