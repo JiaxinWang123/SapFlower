@@ -27,6 +27,7 @@ classdef SapFlower < matlab.apps.AppBase
         BayesianFilteringMenu_2         matlab.ui.container.Menu
         GapFillMenu                     matlab.ui.container.Menu
         DriftDampingMenu                matlab.ui.container.Menu
+        RedoDriftDampingMenu            matlab.ui.container.Menu
         DeleteSelectedDataMenu          matlab.ui.container.Menu
         ReverseSelectedDataMenu         matlab.ui.container.Menu
         UndoMenu                        matlab.ui.container.Menu
@@ -289,6 +290,9 @@ classdef SapFlower < matlab.apps.AppBase
         SubtractionHistory = {}  % Initialize the subtraction history stack
         DeletionIndex = 0  % Initialize the deletion history index
         SubtractionIndex = 0  % Initialize the subtraction history index
+        DriftDampingHistory = {} % UITable4.Data snapshots taken before each drift/damping apply
+        DriftDampingIndex = 0    % Current index into DriftDampingHistory
+        DriftDampingLastMode = '' % Mode of the most recent drift/damping correction (for Redo)
         EnvMetaCols = {}; % Environmental and metadata columns
         SapFlowCols = {}; % Sap flow sensor data columns
         sapflowProcessor % Instance of SapflowProcessor class
@@ -5748,6 +5752,8 @@ end
                     app.undoLastDeletion();
                 case 'inverse'
                     app.undoLastSubstraction();
+                case 'driftDamping'
+                    app.undoLastDriftDamping();
                 otherwise
                     msgbox('Unknown action in history');
             end
@@ -5771,6 +5777,8 @@ end
                         app.undoLastDeletion();
                     case 'inverse'
                         app.undoLastSubstraction();
+                    case 'driftDamping'
+                        app.undoLastDriftDamping();
                     otherwise
                         msgbox('Unknown action in history');
                 end
@@ -5784,16 +5792,15 @@ end
 
         % Menu selected function: DriftDampingMenu
         % Z-score long-term drift / signal-damping correction
-        % (Hata & Kumagai 2026, fluxfixer §2.1.5). Operates on the
-        % currently active sensor's ΔT series via
-        % SapflowProcessor.applyDriftDampingCorrection, which is undoable.
-        % Status, captured stdout, warnings and errors all stream to the
-        % Data Preprocessing tab's text output (app.TextArea2).
+        % (Hata & Kumagai 2026, fluxfixer §2.1.5). Prompts for the mode,
+        % then runs applyDriftDampingWithMode which handles snapshotting,
+        % the actual correction, writing the corrected ΔT back into
+        % UITable4 / app.sapflow, refreshing the plot via plotData, and
+        % logging to the Data Preprocessing tab.
         function DriftDampingMenuSelected(app, event)
-            logLines = {};
             if isempty(app.sapflowProcessor)
-                logLines{end+1} = '[Drift/Damping] Open or create a project first.';
-                app.appendToPreprocessingLog(logLines);
+                app.appendToPreprocessingLog( ...
+                    {'[Drift/Damping] Open or create a project first.'});
                 return
             end
 
@@ -5815,25 +5822,96 @@ end
                 case 'Damping', chosenMode = 'damping';
                 case 'Both',    chosenMode = 'both';
                 otherwise
-                    logLines{end+1} = '[Drift/Damping] Cancelled by user.';
-                    app.appendToPreprocessingLog(logLines);
+                    app.appendToPreprocessingLog( ...
+                        {'[Drift/Damping] Cancelled by user.'});
                     return
             end
-            app.Config.zsMode = chosenMode;  % remember user's choice for next time
 
-            logLines{end+1} = sprintf(...
-                '[Drift/Damping] Starting %s correction (window=%dd, ref=%dd)...', ...
-                chosenMode, win, ref);
-            app.appendToPreprocessingLog(logLines);   % flush header before work
+            app.applyDriftDampingWithMode(chosenMode);
+        end
+
+        % Menu selected function: RedoDriftDampingMenu
+        % Re-applies the most recently used drift/damping mode to the
+        % current sensor's data without opening the mode dialog. Use this
+        % to (a) redo after an Edit > Undo, or (b) repeat the same
+        % correction on a different sensor.
+        function RedoDriftDampingMenuSelected(app, event)
+            if isempty(app.sapflowProcessor)
+                app.appendToPreprocessingLog( ...
+                    {'[Drift/Damping] Open or create a project first.'});
+                return
+            end
+            if isempty(app.DriftDampingLastMode)
+                app.appendToPreprocessingLog( ...
+                    {['[Drift/Damping] No previous drift/damping action to ' ...
+                      'redo. Run Edit > Drift/Damping Correction once first.']});
+                return
+            end
+            app.applyDriftDampingWithMode(app.DriftDampingLastMode);
+        end
+
+        % Shared worker for Drift/Damping Apply and Redo.
+        % - snapshots UITable4.Data so Edit > Undo can revert
+        % - runs SapflowProcessor.applyDriftDampingCorrection
+        % - writes corrected ΔT back into the active sensor column
+        % - calls plotData(true) so plot + table reflect the new values
+        % - logs progress, diagnostics, warnings and errors to TextArea2
+        function applyDriftDampingWithMode(app, chosenMode)
+            app.Config.zsMode = chosenMode;  % remember for next call
+
+            win = 15; ref = 15;
+            if isfield(app.Config, 'zsWindowDays'), win = app.Config.zsWindowDays; end
+            if isfield(app.Config, 'zsRefDays'),    ref = app.Config.zsRefDays;    end
+
+            yDataColumn = '';
+            if ~isempty(app.YDropDown) && isvalid(app.YDropDown)
+                yDataColumn = app.YDropDown.Value;
+            end
+
+            % Header line first so the user sees progress before the work runs.
+            app.appendToPreprocessingLog({sprintf( ...
+                '[Drift/Damping] Starting %s correction on "%s" (window=%dd, ref=%dd)...', ...
+                chosenMode, yDataColumn, win, ref)});
+
             logLines = {};
-
-            lastwarn('');                              % reset warning catcher
+            lastwarn('');
             captured = '';
+            snapshotPushed = false;
             try
+                % Snapshot BEFORE the mutation so Undo can restore.
+                app.DriftDampingIndex = app.DriftDampingIndex + 1;
+                app.DriftDampingHistory{app.DriftDampingIndex} = app.UITable4.Data;
+                if length(app.DriftDampingHistory) > app.DriftDampingIndex
+                    app.DriftDampingHistory(app.DriftDampingIndex+1:end) = [];
+                end
+                app.ActionHistory{end+1} = 'driftDamping';
+                snapshotPushed = true;
+
                 captured = evalc( ...
                     'app.sapflowProcessor.applyDriftDampingCorrection(chosenMode);');
                 nC = sum(app.sapflowProcessor.ssDriftQC == 1);
                 nS = sum(app.sapflowProcessor.ssDriftQC == 2);
+
+                % Write corrected ΔT back into the table column and
+                % refresh plots/table by calling the canonical replot
+                % entry point. plotData rebuilds the processor from the
+                % (now-corrected) table.
+                if ~isempty(yDataColumn) && ismember(yDataColumn, ...
+                        app.UITable4.Data.Properties.VariableNames)
+                    correctedSs = app.sapflowProcessor.ss;
+                    if isrow(correctedSs), correctedSs = correctedSs'; end
+                    app.UITable4.Data.(yDataColumn) = correctedSs;
+                    app.sapflow = correctedSs;
+                    try
+                        app.plotData(true);   % maintainLimits=true
+                    catch MEplot
+                        logLines{end+1} = sprintf( ...
+                            '[Drift/Damping] WARNING: plotData failed: %s', MEplot.message);
+                    end
+                else
+                    logLines{end+1} = ['[Drift/Damping] WARNING: could not ' ...
+                        'identify active sensor column; table/plot not updated.'];
+                end
 
                 if ~isempty(strtrim(captured))
                     capLines = strsplit(strtrim(captured), newline);
@@ -5851,9 +5929,6 @@ end
                 logLines{end+1} = sprintf( ...
                     '[Drift/Damping] Done. %d samples corrected, %d skipped.', nC, nS);
 
-                % Per-segment diagnostics so the user can see why segments
-                % were skipped (most often: not enough valid samples in the
-                % reference window after install).
                 info = app.sapflowProcessor.ssDriftInfo;
                 if ~isempty(info) && isstruct(info)
                     logLines{end+1} = sprintf( ...
@@ -5882,11 +5957,33 @@ end
                         'running GapFill first, lowering cfg.zsMinRefSamples, ' ...
                         'or setting app.Config.installIdx to a sample after ' ...
                         'the initial gap.'];
+                    % Roll back the snapshot — nothing actually changed.
+                    if snapshotPushed
+                        app.DriftDampingHistory(app.DriftDampingIndex) = [];
+                        app.DriftDampingIndex = app.DriftDampingIndex - 1;
+                        if ~isempty(app.ActionHistory) && ...
+                                strcmp(app.ActionHistory{end}, 'driftDamping')
+                            app.ActionHistory(end) = [];
+                        end
+                    end
                 else
-                    logLines{end+1} = ['[Drift/Damping] Tip: re-run baseline ' ...
-                        'picking (Auto / Auto Nightly) before exporting K.'];
+                    logLines{end+1} = ['[Drift/Damping] Table and plot updated. ' ...
+                        'Use Edit > Undo to revert, or Edit > Redo Drift/Damping ' ...
+                        '(Ctrl+Y) to re-apply.'];
+                    app.DriftDampingLastMode = chosenMode;
                 end
             catch ME
+                % Roll back snapshot since the apply did not complete.
+                if snapshotPushed
+                    if numel(app.DriftDampingHistory) >= app.DriftDampingIndex
+                        app.DriftDampingHistory(app.DriftDampingIndex) = [];
+                    end
+                    app.DriftDampingIndex = app.DriftDampingIndex - 1;
+                    if ~isempty(app.ActionHistory) && ...
+                            strcmp(app.ActionHistory{end}, 'driftDamping')
+                        app.ActionHistory(end) = [];
+                    end
+                end
                 if ~isempty(strtrim(captured))
                     capLines = strsplit(strtrim(captured), newline);
                     for k = 1:numel(capLines)
@@ -5901,6 +5998,27 @@ end
             end
 
             app.appendToPreprocessingLog(logLines);
+        end
+
+        % Undo handler invoked by UndoMenuSelected / UndoAllMenuSelected
+        % when the most recent action on ActionHistory is 'driftDamping'.
+        function undoLastDriftDamping(app)
+            if app.DriftDampingIndex <= 0 || isempty(app.DriftDampingHistory)
+                app.appendToPreprocessingLog( ...
+                    {'[Drift/Damping] Nothing to undo.'});
+                return
+            end
+            snapshot = app.DriftDampingHistory{app.DriftDampingIndex};
+            app.DriftDampingIndex = app.DriftDampingIndex - 1;
+            app.UITable4.Data = snapshot;
+            try
+                app.plotData(true);
+            catch ME
+                app.appendToPreprocessingLog( ...
+                    {sprintf('[Drift/Damping] Undo: plotData failed: %s', ME.message)});
+            end
+            app.appendToPreprocessingLog( ...
+                {'[Drift/Damping] Reverted last correction. Press Ctrl+Y to redo.'});
         end
 
         % Menu selected function: HomePageMenu
@@ -7531,6 +7649,12 @@ end
             app.DriftDampingMenu.MenuSelectedFcn = createCallbackFcn(app, @DriftDampingMenuSelected, true);
             app.DriftDampingMenu.Accelerator = 'T';
             app.DriftDampingMenu.Text = 'Drift/Damping Correction';
+
+            % Create RedoDriftDampingMenu — re-applies the last drift/damping mode without the dialog
+            app.RedoDriftDampingMenu = uimenu(app.EditMenu);
+            app.RedoDriftDampingMenu.MenuSelectedFcn = createCallbackFcn(app, @RedoDriftDampingMenuSelected, true);
+            app.RedoDriftDampingMenu.Accelerator = 'Y';
+            app.RedoDriftDampingMenu.Text = 'Redo Drift/Damping';
 
             % Create DeleteSelectedDataMenu
             app.DeleteSelectedDataMenu = uimenu(app.EditMenu);
