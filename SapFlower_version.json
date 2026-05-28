@@ -1,6 +1,6 @@
 {
-    "version": "1.0.2.2",
-    "release_date": "2025-03-06",
-    "changelog": "Added AIC and BIC for model evaludation",
+    "version": "1.0.2.3",
+    "release_date": "2026-05-27",
+    "changelog": "Integrate drift/damping detection into Auto Clean",
     "download_url": "https://doi.org/10.5281/zenodo.13665919"
 }
