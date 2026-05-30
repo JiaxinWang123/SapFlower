@@ -293,6 +293,8 @@ classdef SapFlower < matlab.apps.AppBase
         DriftDampingHistory = {} % UITable4.Data snapshots taken before each drift/damping apply
         DriftDampingIndex = 0    % Current index into DriftDampingHistory
         DriftDampingLastMode = '' % Mode of the most recent drift/damping correction (for Redo)
+        AutoCleanHistory = {} % UITable4.Data snapshots taken before each Auto Clean run
+        AutoCleanIndex = 0    % Current index into AutoCleanHistory
         EnvMetaCols = {}; % Environmental and metadata columns
         SapFlowCols = {}; % Sap flow sensor data columns
         sapflowProcessor % Instance of SapflowProcessor class
@@ -725,6 +727,20 @@ methods (Access = public)
             % disp('SapFluxNet Data Mode is active. Skipping data cleaning and saving.');
             return;
         end
+
+        % Snapshot UITable4.Data BEFORE any cleaning mutation so that
+        % Edit > Undo (Ctrl+Z) can revert the entire Auto Clean step.
+        % Drop any stale redo-side snapshots first (matches the pattern in
+        % saveToDeletionHistory).
+        if ~isempty(app.UITable4) && isvalid(app.UITable4) && ~isempty(app.UITable4.Data)
+            app.AutoCleanIndex = app.AutoCleanIndex + 1;
+            app.AutoCleanHistory{app.AutoCleanIndex} = app.UITable4.Data;
+            if length(app.AutoCleanHistory) > app.AutoCleanIndex
+                app.AutoCleanHistory(app.AutoCleanIndex+1:end) = [];
+            end
+            app.ActionHistory{end+1} = 'autoClean';
+        end
+
         % Function to detect and remove outlier windows and windows with high or low variation
         function [cleanedData, outlierMask, highVariationMask, lowVariationMask] = removeOutlierWindowsAndInconsistencies(sensorData, windowSize, thresholdMultiplier, variationThresholdHigh, variationThresholdLow)
             % Check if the input data is valid
@@ -5813,6 +5829,8 @@ end
                     app.undoLastSubstraction();
                 case 'driftDamping'
                     app.undoLastDriftDamping();
+                case 'autoClean'
+                    app.undoLastAutoClean();
                 otherwise
                     msgbox('Unknown action in history');
             end
@@ -5838,6 +5856,8 @@ end
                         app.undoLastSubstraction();
                     case 'driftDamping'
                         app.undoLastDriftDamping();
+                    case 'autoClean'
+                        app.undoLastAutoClean();
                     otherwise
                         msgbox('Unknown action in history');
                 end
@@ -6109,6 +6129,30 @@ end
             end
             app.appendToPreprocessingLog( ...
                 {'[Drift/Damping] Reverted last correction. Press Ctrl+Y to redo.'});
+        end
+
+        % Undo handler invoked by UndoMenuSelected / UndoAllMenuSelected
+        % when the most recent action on ActionHistory is 'autoClean'.
+        % Reverts the entire Auto Clean step (outlier removal, variation
+        % filtering, short-run culling) by restoring the table snapshot
+        % taken at the start of plotExampleCleanedSapflow.
+        function undoLastAutoClean(app)
+            if app.AutoCleanIndex <= 0 || isempty(app.AutoCleanHistory)
+                app.appendToPreprocessingLog( ...
+                    {'[AutoClean] Nothing to undo.'});
+                return
+            end
+            snapshot = app.AutoCleanHistory{app.AutoCleanIndex};
+            app.AutoCleanIndex = app.AutoCleanIndex - 1;
+            app.UITable4.Data = snapshot;
+            try
+                app.plotData(true);
+            catch ME
+                app.appendToPreprocessingLog( ...
+                    {sprintf('[AutoClean] Undo: plotData failed: %s', ME.message)});
+            end
+            app.appendToPreprocessingLog( ...
+                {'[AutoClean] Reverted last Auto Clean. Click Auto Clean again to redo.'});
         end
 
         % Menu selected function: HomePageMenu
