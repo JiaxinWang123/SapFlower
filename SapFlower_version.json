@@ -1,6 +1,6 @@
 {
-    "version": "1.0.2.3",
-    "release_date": "2026-05-27",
-    "changelog": "Integrated drift/damping detection into Auto Clean",
+    "version": "1.0.2.4",
+    "release_date": "2026-05-30",
+    "changelog": "Enabled users to undo AutoClean",
     "download_url": "https://doi.org/10.5281/zenodo.13665919"
 }
